@@ -1,14 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Twitch Auto Claim (personal)",
-  "version": "1.2.1",
+  "version": "1.4.0",
   "description": "Claims channel point bonuses and drops on twitch.tv. Runs locally, no network access, no remote code.",
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "twitch-autoclaim@snowy-burbot.com",
-      "strict_min_version": "128.0"
-    }
-  },
   "permissions": [
     "storage",
     "alarms"
@@ -17,10 +11,7 @@
     "https://www.twitch.tv/*"
   ],
   "background": {
-    "service_worker": "src/background.js",
-    "scripts": [
-      "src/background.js"
-    ]
+    "service_worker": "src/background.js"
   },
   "content_scripts": [
     {

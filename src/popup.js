@@ -7,6 +7,7 @@ const DEFAULTS = {
   inventoryDrops: true,
   playerPrompts: false,
   autoSweep: false,
+  sweepOnlyWithTwitch: true,
   sweepIntervalMinutes: 60,
   sweepTimeoutSeconds: 120,
   minDelayMs: 1200,

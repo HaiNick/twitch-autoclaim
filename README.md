@@ -1,119 +1,142 @@
-# Twitch Auto Claim (personal build)
+# Twitch Auto Claim
 
-A single-purpose MV3 extension that clicks the claim buttons Twitch already shows you: channel point bonus chests, drop claim buttons on the stream page, and drop claim buttons in the drops inventory. It replaces the abandoned "Automatic Twitch: Drops, Moments and Points" extension without the parts that made that one dangerous.
+A Chrome extension that clicks the claim buttons Twitch already shows you: channel point bonus chests, drop rewards on a stream page, and drop rewards in the drops inventory. It replaces the abandoned "Automatic Twitch: Drops, Moments and Points" extension, which shipped adware after its developer sold it.
 
-## What it does not do
+## What the extension can reach
 
-The failure mode of the original extension was scope. Once the developer sold it, the existing permissions were enough to open ad tabs on any site. This build removes that possibility:
+The original extension caused damage because its permissions covered every site. This one is scoped so the same failure cannot happen:
 
-- `host_permissions` is `https://www.twitch.tv/*` only. It cannot read or touch any other site.
-- No `tabs`, `webRequest`, `scripting`, `cookies`, or `<all_urls>` permission.
-- No background service worker, so nothing runs when you are not on Twitch.
-- No `fetch`, no `XMLHttpRequest`, no analytics, no remote code. Everything ships in the package.
-- The only storage is `storage.local` holding your toggles and claim counters.
+- `host_permissions` lists `https://www.twitch.tv/*` and nothing else. On any other site, Chrome injects no code from this extension.
+- `permissions` lists `storage` and `alarms`. There is no `tabs`, `webRequest`, `scripting`, `cookies`, or `<all_urls>`.
+- The extension makes no network requests. It contains no analytics, no telemetry, and no remote code.
+- State lives in `chrome.storage.local`, never `chrome.storage.sync`, so nothing leaves the machine.
 
-You can verify all of this with `grep -rn "fetch\|XMLHttpRequest\|http" src/`. The only hits are comments.
+To verify the network claim, run `grep -rn "fetch(\|XMLHttpRequest" src/`. It returns nothing.
 
-## Install
+The extension does run a background service worker, added for the inventory sweep. Chrome unloads it between alarms, and each wake reads a few settings and one tab list.
 
-Firefox (temporary, resets on restart):
-
-1. Go to `about:debugging#/runtime/this-firefox`.
-2. Click **Load Temporary Add-on**, and select `manifest.json`.
-
-Firefox (permanent) requires either Developer Edition with `xpinstall.signatures.required=false` in `about:config`, or a self-signed build through [web-ext sign](https://extensionworkshop.com/documentation/develop/web-ext-command-reference/). Package it with:
-
-```bash
-cd twitch-autoclaim && zip -r ../twitch-autoclaim.xpi . -x '*.git*'
-```
-
-Chromium, Brave, or Edge:
+## Install the extension
 
 1. Go to `chrome://extensions`.
 2. Turn on **Developer mode**.
 3. Click **Load unpacked**, and select the `twitch-autoclaim` folder.
+4. Reload any Twitch tab that is already open.
 
-After loading, reload any open Twitch tab. Content scripts do not inject into tabs that were already open.
+Chrome injects content scripts when a page loads, so tabs opened before the install claim nothing until you reload them.
 
-## Use
+After you edit a file, click the reload icon on the extension card. If you edited `src/selectors.js` or `src/content.js`, reload the Twitch tab as well.
 
-Click the toolbar icon for the popup. The master switch pauses everything without uninstalling. The four toggles map one to one to the selector groups in `src/selectors.js`.
+`manifest.json` targets Chrome through `background.service_worker`, which Firefox does not support. To build for Firefox, replace that key with `"scripts": ["src/background.js"]` and add a `browser_specific_settings.gecko.id`. The rest of the source runs on both browsers.
 
-The delay slider sets the upper bound of the random wait before a click, from 1 to 15 seconds. The lower bound follows at half the upper value. A random delay in the low seconds looks like a person reaching for a chest icon; an instant click on every mutation does not.
+## Claim while you watch
 
-`playerPrompts` is off by default. It accepts mature content gates and "still watching" prompts, which is convenient for long AFK sessions but means the extension clicks through a consent dialog for you. Turn it on deliberately.
+The popup holds one toggle per selector group:
 
-## Inventory sweep
+- **Channel point bonuses** claims the bonus chest on a stream page.
+- **Drops on the stream page** claims a drop reward shown next to the player.
+- **Drops in the inventory** claims rewards at `https://www.twitch.tv/drops/inventory`.
+- **Player prompts and gates** accepts mature content gates and "still watching" prompts. This one is off by default, because it clicks through a consent dialog on your behalf.
 
-Claiming only happens on a page you have open, so a drop that completes while you are not on the inventory page sits there until you visit it. The sweep automates that visit.
+The delay slider sets the upper bound of the random wait before each click, from 1 to 15 seconds; the lower bound follows at half that value. A random delay in the low seconds resembles a person reaching for the chest icon. An instant click on every DOM mutation does not.
 
-Turn on **Sweep the drops inventory** in the popup and pick an interval. On that timer, the background worker opens `https://www.twitch.tv/drops/inventory` in an inactive background tab, the content script claims everything it finds, reports back, and the worker closes the tab. **Sweep now** runs one immediately. The popup shows the last result, for example `last sweep 12m ago: claimed 2`.
+The master switch at the top pauses every group without uninstalling the extension.
 
-If **Sweep now** reports something other than `opened tab N`, the message tells you why. `skipped: inventory already open in a tab` means a tab is already on that page. `background worker unreachable` means the worker did not load, so check `about:debugging` or `chrome://extensions` for a manifest error and reload the extension. A sweep whose state got stuck is cleared automatically after 10 minutes.
+## Sweep the drops inventory
 
-The sweep skips itself in three cases: the extension is paused, `inventoryDrops` is off, or you already have the inventory open in a tab. That last rule keeps it from closing a tab you are using.
+Claiming happens only on a page you have open, so a drop that finishes while the inventory page is closed waits for your next visit. The sweep makes that visit for you.
 
-Timing inside the sweep tab: claim delays drop to 0.25 to 0.9 seconds, since nobody is watching. The tab closes once no claim button has been visible for three checks in a row, with a 10 second floor to let React render. A `sweep-timeout` alarm closes the tab after 120 seconds no matter what, so a Twitch outage or a login wall cannot leave a stray tab open. If you are logged out, the content script detects the login button and reports back immediately.
+To turn it on, select **Sweep the drops inventory** in the popup and choose an interval. On that timer, the service worker opens the inventory in an inactive background tab, the content script claims what it finds and reports back, and the worker closes the tab. **Sweep now** runs one immediately.
 
-This feature adds one permission, `alarms`. It does not add `tabs`: `tabs.create` and `tabs.remove` work without it, and without `tabs` the extension still cannot read the URL or title of anything outside `www.twitch.tv`.
+**Only while Twitch is open** is on by default. With it, a scheduled sweep runs only when a `www.twitch.tv` tab already exists in some window. Any Twitch page counts, not only the inventory. Manual sweeps ignore this check, because pressing the button states the intent.
 
-Background tabs are throttled by the browser, which is why the timeout is generous. Chrome clamps timers in a hidden tab to roughly one second, then to once per minute after five minutes hidden. The whole sweep is designed to finish inside that first window.
+A sweep also skips itself when the extension is paused, when **Drops in the inventory** is off, or when the inventory is already open in a tab. The last rule prevents the worker from closing a tab you are using.
 
-## Stats
+The popup reports the outcome of the last sweep:
 
-Click **History** in the popup, or open the extension's options entry, for the full history page. It reads the same `storage.local` data the content script writes:
+| Message | Meaning |
+| --- | --- |
+| `opened tab N` | The sweep started. |
+| `skipped: no Twitch tab open` | No Twitch tab exists and the gate is on. |
+| `skipped: inventory already open in a tab` | You have that page open. |
+| `skipped: claiming is paused` | The master switch is off. |
+| `claimed N` | The sweep finished and closed its tab. |
+| `background worker unreachable` | The worker did not load. Check `chrome://extensions` for a manifest error, then reload the extension. |
 
-- Totals for the last 7, 30, or 90 days: claims in range, claims today, best day, days with activity.
-- A stacked bar per day, colored by selector group, so a drop in one group stands out from a quiet week.
-- A per-group table with each group's share of the range and its last successful claim.
-- All-time top channels, taken from the first path segment of the URL at claim time. The drops inventory is recorded as `(inventory)`.
-- The last 25 individual claims with timestamp, channel, and group.
+Inside the sweep tab, claim delays drop to 0.25 to 0.9 seconds. The tab closes once no claim button has been visible for three consecutive checks, with a 10 second floor that lets Twitch render. A `sweep-timeout` alarm closes the tab after 120 seconds regardless, so an outage or a login wall cannot leave a stray tab behind. If you are signed out, the content script detects the login button and reports back at once. State that gets stuck clears itself after 10 minutes.
 
-**Export JSON** writes the whole store to a file. **Clear history** wipes counts, channels, and events, and leaves your toggles alone.
+The timeout is generous because Chrome throttles hidden tabs. Timers clamp to roughly one second while a tab is hidden, then to once per minute after five minutes. The sweep is sized to finish inside that first window.
 
-History keeps 90 days of daily buckets and the last 800 events, pruned on write, so the store stays well under the `storage.local` quota. Each claim does a read-modify-write of the history keys, so two Twitch tabs claiming at the same moment do not overwrite each other's totals.
+This feature needs the `alarms` permission. It does not need `tabs`: `tabs.create` and `tabs.remove` work without it, and withholding `tabs` keeps the extension from reading the URL or title of anything outside `www.twitch.tv`.
 
-## The readout
+## View your claim history
 
-The popup shows three columns per selector group: the group name, how many claims it has made, and when its selectors last matched anything on the page. That last column is the diagnostic. If channel points shows `3d ago` while you have been watching all week, Twitch changed the DOM and the selectors need an update. Green means matched within the hour.
+Click **History** in the popup to open the history page. It reads the same `chrome.storage.local` keys the content script writes:
 
-**Scan this tab** runs a dry pass against the current page and reports how many elements each group matches right now, without clicking. Use it when a claim button is visible on screen and you want to know whether the extension can see it.
+- Totals over the last 7, 30, or 90 days: claims in range, claims today, best day, and days with activity.
+- A stacked bar per day, colored by selector group.
+- A per-group table showing each group's share of the range and its last successful claim.
+- All-time top channels, taken from the first path segment of the URL at claim time. The inventory records as `(inventory)`.
+- The 25 most recent claims, with timestamp, channel, and group.
 
-## Fixing it when Twitch changes the UI
+**Export JSON** writes the whole store to a file. **Clear history** deletes counts, channels, and events, and leaves your toggles in place.
 
-This is the maintenance that killed the old extensions. Everything DOM-specific lives in `src/selectors.js`, so a fix is a two-minute edit:
+The store holds 90 days of daily buckets and the 800 most recent events, both pruned on write. A saturated store is roughly 88 KB, well under the quota. Each claim reads and rewrites the history keys, so two Twitch tabs claiming at the same moment do not overwrite each other's totals.
+
+## Check selector health
+
+The popup lists three columns per group: the group name, its claim count, and when its selectors last matched anything. That third column is the diagnostic. If channel points reads `3d ago` after a week of watching, Twitch changed its DOM and the selectors need an update. A green value means a match within the hour.
+
+**Scan this tab** runs a dry pass over the current page and reports how many elements each group matches, without clicking. Use it while a claim button is visible on screen to confirm the extension can see it.
+
+## Update the selectors when Twitch changes its UI
+
+Unmaintained selectors are what broke the older auto-claim extensions. Every DOM assumption in this one lives in `src/selectors.js`.
 
 1. On Twitch, right-click the claim button and select **Inspect**.
-2. In DevTools, find the nearest ancestor or the button itself carrying a `data-test-selector` or `data-a-target` attribute. Prefer those over class names. Twitch generates classes like `ScCoreButton-sc-ocjdkq-0` from styled-components, and the hash changes on every deploy.
-3. Add the new selector at the top of that group's `selectors` array in `src/selectors.js`. Leave the old entries in place. They cost nothing and keep working on pages Twitch has not migrated yet.
+2. In DevTools, find a `data-test-selector` or `data-a-target` attribute on the button or its nearest ancestor. Prefer those attributes over class names, because Twitch generates classes such as `ScCoreButton-sc-ocjdkq-0` from styled-components and the hash changes with every deploy.
+3. Add the new selector at the top of that group's `selectors` array. Leave the existing entries in place; they cost nothing and still match pages Twitch has not migrated.
 4. Reload the extension, then reload the Twitch tab.
 
-If you can only find hashed classes, use the `textScopes` and `textPattern` mechanism instead: add a container selector that is stable, and let the button be found by its accessible name. Never add a bare `button` selector outside a scope. Twitch reuses the same button component for redeeming rewards, subscribing, and gifting, so an unscoped match can spend your points instead of collecting them. The included jsdom test in the project notes covers exactly that case.
+If the element carries only hashed classes, add a stable container to `textScopes` instead and let `textPattern` match the button by its accessible name.
 
-## Known limits
+**Warning:** never add a bare `button` selector outside a scope. Twitch renders redeem, subscribe, and gift with the same button component, so an unscoped match can spend your channel points instead of collecting them. `test/selector-test.mjs` asserts that no group matches a **Redeem** button or the points balance.
 
-- Drops only progress while a qualifying stream is actually playing in a tab. The sweep collects finished drops, it does not advance them. For AFK farming without video, [Twitch Drops Miner](https://github.com/DevilXD/TwitchDropsMiner) talks to the GraphQL API instead, which is a different risk profile.
-- Twitch has shipped anti-automation checks on drop claiming before. If claims start failing, turn the drop groups off and claim from the inventory page by hand for a while.
-- Automating interactions is a gray area under the [Twitch Terms of Service](https://www.twitch.tv/p/legal/terms-of-service/), which restricts automated access to the service. Clicking a button that the site renders for you on a page you have open is the mildest end of it, but it is your account.
-
-## Files
-
-```
-manifest.json        permissions and entry points
-src/background.js    sweep scheduling, tab lifecycle, timeout
-src/selectors.js     every DOM assumption, the only file to edit on breakage
-src/content.js       observer, debounce, cooldown, click logic
-src/popup.html/.css/.js   toggles and the selector health readout
-src/stats.html/.css/.js   history page: daily chart, groups, channels, events
-test/                     jsdom checks for selector safety and page rendering
-icons/               generated PNGs
-```
-
-## Tests
+## Run the tests
 
 ```bash
 cd test && npm install jsdom
-node selector-test.mjs      # no selector may match Redeem or the points balance
-node stats-render-test.mjs  # history page renders against fake data without errors
-node sweep-test.mjs         # sweep opens one tab, closes it, and never touches a foreign tab
+node selector-test.mjs      # no group matches Redeem or the points balance
+node stats-render-test.mjs  # the history page renders against fake data
+node sweep-test.mjs         # the sweep opens one tab, closes it, and leaves other tabs alone
+```
+
+## Package for the Chrome Web Store
+
+The store expects `manifest.json` at the root of the archive rather than inside a folder, and it does not need the tests or the listing copy:
+
+```bash
+cd twitch-autoclaim
+zip -rq ../twitch-autoclaim-1.4.0.zip . -x '.git/*' 'node_modules/*' 'test/*' 'store/*' '*.zip' '.gitignore'
+```
+
+`store/listing.md` holds the description, single purpose statement, permission justifications, and data disclosure answers for the developer dashboard. Reviewers compare those answers against the source, so keep them accurate.
+
+## Limitations
+
+- Drops advance only while a qualifying stream plays in a tab. The sweep collects finished drops; it does not progress them. To farm without video, use [Twitch Drops Miner](https://github.com/DevilXD/TwitchDropsMiner), which drives the GraphQL API and carries a different risk profile.
+- Twitch has shipped anti-automation checks on drop claiming before. If claims start failing, turn the drop groups off and claim by hand for a while.
+- The [Twitch Terms of Service](https://www.twitch.tv/p/legal/terms-of-service/) restrict automated access to the service. Clicking a button the site renders on a page you have open sits at the mild end of that, and the account risk is yours.
+
+## File map
+
+```
+manifest.json             permissions and entry points
+src/selectors.js          every DOM assumption, the file to edit when Twitch changes
+src/content.js            observer, debounce, cooldown, click logic, sweep mode
+src/background.js         sweep scheduling, tab lifecycle, timeout
+src/popup.html/.css/.js   toggles, sweep controls, selector health readout
+src/stats.html/.css/.js   history page: daily chart, groups, channels, events
+test/                     jsdom checks for selector safety, rendering, and sweeps
+store/                    Chrome Web Store listing copy and promo tile
+icons/                    generated PNGs
 ```

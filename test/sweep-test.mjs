@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function makeEnv({ settings, openTabs = [] }) {
+const A_TWITCH_TAB = [{ id: 1, url: "https://www.twitch.tv/somestreamer" }];
+
+function makeEnv({ settings, openTabs = A_TWITCH_TAB }) {
   const store = { settings };
   const log = { created: [], removed: [], alarms: {}, cleared: [] };
   const listeners = {};
@@ -100,6 +102,47 @@ env = makeEnv({
 run(); await wait();
 await env.listeners.alarm({ name: "sweep" }); await wait();
 check("other tabs do not block the sweep", env.log.created.length === 1);
+
+// 5b. a scheduled sweep needs a Twitch tab to already exist
+env = makeEnv({
+  settings: { enabled: true, autoSweep: true, inventoryDrops: true, sweepOnlyWithTwitch: true },
+  openTabs: [{ id: 3, url: "https://github.com" }, { id: 4, url: "https://news.ycombinator.com" }]
+});
+run(); await wait();
+await env.listeners.alarm({ name: "sweep" }); await wait();
+check("no scheduled sweep without a Twitch tab", env.log.created.length === 0);
+check("says no Twitch tab is open", env.store.lastSweep?.outcome.includes("no Twitch tab"));
+
+// a Twitch tab anywhere is enough, it does not have to be the inventory
+env = makeEnv({
+  settings: { enabled: true, autoSweep: true, inventoryDrops: true, sweepOnlyWithTwitch: true },
+  openTabs: [{ id: 5, url: "https://www.twitch.tv/somestreamer" }]
+});
+run(); await wait();
+await env.listeners.alarm({ name: "sweep" }); await wait();
+check("sweeps when a Twitch tab exists", env.log.created.length === 1);
+
+// pressing the button ignores the gate
+env = makeEnv({
+  settings: { enabled: true, autoSweep: true, inventoryDrops: true, sweepOnlyWithTwitch: true },
+  openTabs: [{ id: 6, url: "https://github.com" }]
+});
+run(); await wait();
+await new Promise((resolve) => {
+  const kept = env.listeners.message({ type: "sweepNow" }, {}, resolve);
+  if (!kept) resolve();
+});
+await wait();
+check("manual sweep runs with no Twitch tab", env.log.created.length === 1);
+
+// with the gate off, the schedule runs regardless
+env = makeEnv({
+  settings: { enabled: true, autoSweep: true, inventoryDrops: true, sweepOnlyWithTwitch: false },
+  openTabs: [{ id: 7, url: "https://github.com" }]
+});
+run(); await wait();
+await env.listeners.alarm({ name: "sweep" }); await wait();
+check("gate off means sweep anyway", env.log.created.length === 1);
 
 // 6. paused extension does not sweep
 env = makeEnv({ settings: { enabled: false, autoSweep: true, inventoryDrops: true } });

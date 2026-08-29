@@ -10,6 +10,7 @@
  */
 const api = globalThis.browser ?? globalThis.chrome;
 
+const TWITCH_ORIGIN = "https://www.twitch.tv/";
 const SWEEP_URL = "https://www.twitch.tv/drops/inventory";
 const ALARM_SWEEP = "sweep";
 const ALARM_TIMEOUT = "sweep-timeout";
@@ -19,6 +20,7 @@ const DEFAULTS = {
   enabled: true,
   inventoryDrops: true,
   autoSweep: false,
+  sweepOnlyWithTwitch: true,
   sweepIntervalMinutes: 60,
   sweepTimeoutSeconds: 120
 };
@@ -86,7 +88,17 @@ async function startSweep(trigger) {
   }
 
   const all = await api.tabs.query({});
-  const open = all.filter((tab) => typeof tab.url === "string" && tab.url.startsWith(SWEEP_URL));
+  const twitch = all.filter((tab) => typeof tab.url === "string" && tab.url.startsWith(TWITCH_ORIGIN));
+
+  // A scheduled sweep should not conjure a Twitch tab out of nowhere. Manual
+  // sweeps skip this check, since pressing the button is the intent.
+  if (trigger === "schedule" && settings.sweepOnlyWithTwitch && !twitch.length) {
+    const outcome = "skipped: no Twitch tab open";
+    await report(outcome);
+    return outcome;
+  }
+
+  const open = twitch.filter((tab) => tab.url.startsWith(SWEEP_URL));
   if (open.length) {
     const outcome = "skipped: inventory already open in a tab";
     await report(outcome);
