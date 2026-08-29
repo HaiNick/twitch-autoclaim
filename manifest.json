@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Twitch Auto Claim (personal)",
+  "version": "1.0.0",
+  "description": "Claims channel point bonuses and drops on twitch.tv. Runs locally, no network access, no remote code.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "twitch-autoclaim@snowy-burbot.com",
+      "strict_min_version": "128.0"
+    }
+  },
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.twitch.tv/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://www.twitch.tv/*"],
+      "js": ["src/selectors.js", "src/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "Twitch Auto Claim",
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

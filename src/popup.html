@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>Twitch Auto Claim</title>
+  </head>
+  <body>
+    <header class="bar">
+      <span class="dot" id="state-dot" aria-hidden="true"></span>
+      <h1>Auto claim</h1>
+      <label class="master">
+        <input type="checkbox" id="enabled" />
+        <span id="state-label">on</span>
+      </label>
+    </header>
+
+    <section class="group" aria-label="What to claim">
+      <label class="row"><input type="checkbox" data-setting="channelPoints" /><span>Channel point bonuses</span></label>
+      <label class="row"><input type="checkbox" data-setting="streamDrops" /><span>Drops on the stream page</span></label>
+      <label class="row"><input type="checkbox" data-setting="inventoryDrops" /><span>Drops in the inventory</span></label>
+      <label class="row"><input type="checkbox" data-setting="playerPrompts" /><span>Player prompts and gates</span></label>
+    </section>
+
+    <section class="group" aria-label="Click delay">
+      <div class="row delay">
+        <span>Click delay</span>
+        <span class="mono" id="delay-readout">1.2s to 4.5s</span>
+      </div>
+      <input type="range" id="maxDelay" min="1000" max="15000" step="500" />
+    </section>
+
+    <section class="readout" aria-label="Selector health">
+      <div class="readout-head">
+        <span>selector</span><span>claims</span><span>last seen</span>
+      </div>
+      <div id="health"></div>
+    </section>
+
+    <footer>
+      <button id="scan" type="button">Scan this tab</button>
+      <button id="reset" type="button" class="ghost">Reset counters</button>
+      <p id="message" class="message"></p>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
