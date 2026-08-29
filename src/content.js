@@ -26,6 +26,8 @@
   const SCAN_DEBOUNCE_MS = 400;
   const SAFETY_INTERVAL_MS = 5000;
   const STATS_FLUSH_MS = 5000;
+  const HISTORY_DAYS = 90;
+  const MAX_EVENTS = 800;
 
   const clicked = new WeakMap();
 
@@ -112,6 +114,49 @@
     }
   }
 
+  function currentChannel() {
+    if (/^\/drops\/inventory/.test(location.pathname)) return "(inventory)";
+    const segment = location.pathname.split("/").filter(Boolean)[0] || "(home)";
+    return /^(directory|drops|settings|u|videos|search|following)$/.test(segment) ? `(${segment})` : segment;
+  }
+
+  function dayKey(timestamp) {
+    const d = new Date(timestamp);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  /**
+   * History is read-modify-written on every claim rather than held in memory,
+   * so two Twitch tabs claiming at the same time do not overwrite each other.
+   */
+  async function appendHistory(name) {
+    const at = Date.now();
+    const channel = currentChannel();
+    const stored = await api.storage.local.get(["daily", "channels", "events"]);
+
+    const daily = stored.daily || {};
+    const key = dayKey(at);
+    daily[key] = daily[key] || {};
+    daily[key][name] = (daily[key][name] || 0) + 1;
+
+    const cutoff = at - HISTORY_DAYS * 86400000;
+    for (const day of Object.keys(daily)) {
+      if (new Date(`${day}T23:59:59`).getTime() < cutoff) delete daily[day];
+    }
+
+    const channels = stored.channels || {};
+    const channelEntry = channels[channel] || { claims: 0, lastClaim: null };
+    channelEntry.claims += 1;
+    channelEntry.lastClaim = at;
+    channels[channel] = channelEntry;
+
+    const events = stored.events || [];
+    events.push({ at, group: name, channel });
+    if (events.length > MAX_EVENTS) events.splice(0, events.length - MAX_EVENTS);
+
+    await api.storage.local.set({ daily, channels, events });
+  }
+
   async function scan(reason) {
     if (!settings.enabled || running) return;
     running = true;
@@ -134,6 +179,7 @@
           target.click();
           clicked.set(target, Date.now());
           record(name, { claimed: true });
+          appendHistory(name).catch((error) => console.warn("[auto-claim] history write failed:", error));
           log(`claimed ${group.label} (${reason}): "${accessibleName(target).slice(0, 40)}"`);
 
           await sleep(700);

@@ -106,10 +106,9 @@ document.getElementById("maxDelay").addEventListener("input", (event) => {
   save();
 });
 
-document.getElementById("reset").addEventListener("click", async () => {
-  await api.storage.local.set({ stats: {} });
-  renderHealth({});
-  say("counters cleared");
+document.getElementById("stats").addEventListener("click", () => {
+  api.runtime.openOptionsPage();
+  window.close();
 });
 
 document.getElementById("scan").addEventListener("click", async () => {

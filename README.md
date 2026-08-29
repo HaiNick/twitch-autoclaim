@@ -43,6 +43,20 @@ The delay slider sets the upper bound of the random wait before a click, from 1 
 
 `playerPrompts` is off by default. It accepts mature content gates and "still watching" prompts, which is convenient for long AFK sessions but means the extension clicks through a consent dialog for you. Turn it on deliberately.
 
+## Stats
+
+Click **History** in the popup, or open the extension's options entry, for the full history page. It reads the same `storage.local` data the content script writes:
+
+- Totals for the last 7, 30, or 90 days: claims in range, claims today, best day, days with activity.
+- A stacked bar per day, colored by selector group, so a drop in one group stands out from a quiet week.
+- A per-group table with each group's share of the range and its last successful claim.
+- All-time top channels, taken from the first path segment of the URL at claim time. The drops inventory is recorded as `(inventory)`.
+- The last 25 individual claims with timestamp, channel, and group.
+
+**Export JSON** writes the whole store to a file. **Clear history** wipes counts, channels, and events, and leaves your toggles alone.
+
+History keeps 90 days of daily buckets and the last 800 events, pruned on write, so the store stays well under the `storage.local` quota. Each claim does a read-modify-write of the history keys, so two Twitch tabs claiming at the same moment do not overwrite each other's totals.
+
 ## The readout
 
 The popup shows three columns per selector group: the group name, how many claims it has made, and when its selectors last matched anything on the page. That last column is the diagnostic. If channel points shows `3d ago` while you have been watching all week, Twitch changed the DOM and the selectors need an update. Green means matched within the hour.
@@ -73,5 +87,15 @@ manifest.json        permissions and entry points
 src/selectors.js     every DOM assumption, the only file to edit on breakage
 src/content.js       observer, debounce, cooldown, click logic
 src/popup.html/.css/.js   toggles and the selector health readout
+src/stats.html/.css/.js   history page: daily chart, groups, channels, events
+test/                     jsdom checks for selector safety and page rendering
 icons/               generated PNGs
+```
+
+## Tests
+
+```bash
+cd test && npm install jsdom
+node selector-test.mjs      # no selector may match Redeem or the points balance
+node stats-render-test.mjs  # history page renders against fake data without errors
 ```
