@@ -22,12 +22,24 @@
   let lastPath = location.pathname;
   let statsFlushedAt = 0;
 
+  // sweep mode: this tab was opened by the background worker to drain the
+  // inventory, so it claims fast and reports back when there is nothing left
+  let sweepMode = false;
+  let sweepClaims = 0;
+  let sweepIdleChecks = 0;
+  let sweepStartedAt = 0;
+
   const CLICK_COOLDOWN_MS = 20000;
   const SCAN_DEBOUNCE_MS = 400;
   const SAFETY_INTERVAL_MS = 5000;
   const STATS_FLUSH_MS = 5000;
   const HISTORY_DAYS = 90;
   const MAX_EVENTS = 800;
+  const SWEEP_MIN_DELAY_MS = 250;
+  const SWEEP_MAX_DELAY_MS = 900;
+  const SWEEP_SETTLE_MS = 10000;
+  const SWEEP_GIVE_UP_MS = 25000;
+  const SWEEP_IDLE_CHECKS = 3;
 
   const clicked = new WeakMap();
 
@@ -38,6 +50,7 @@
   }
 
   function randomDelay() {
+    if (sweepMode) return SWEEP_MIN_DELAY_MS + Math.random() * (SWEEP_MAX_DELAY_MS - SWEEP_MIN_DELAY_MS);
     const min = Math.max(0, Number(settings.minDelayMs) || 0);
     const max = Math.max(min, Number(settings.maxDelayMs) || min);
     return min + Math.random() * (max - min);
@@ -180,6 +193,7 @@
           clicked.set(target, Date.now());
           record(name, { claimed: true });
           appendHistory(name).catch((error) => console.warn("[auto-claim] history write failed:", error));
+          if (sweepMode) sweepClaims += 1;
           log(`claimed ${group.label} (${reason}): "${accessibleName(target).slice(0, 40)}"`);
 
           await sleep(700);
@@ -211,6 +225,59 @@
       };
     }
     return { url: location.pathname, report };
+  }
+
+  function isLoggedOut() {
+    return Boolean(document.querySelector('[data-a-target="login-button"]'));
+  }
+
+  function inventoryRendered() {
+    return Boolean(document.querySelector('[data-test-selector*="Drops" i], [class*="inventory" i]'));
+  }
+
+  function endSweep(reason) {
+    if (!sweepMode) return;
+    sweepMode = false;
+    log(`sweep finished (${reason}), claimed ${sweepClaims}`);
+    api.runtime.sendMessage({ type: "sweepDone", claimed: sweepClaims, reason }).catch(() => {});
+  }
+
+  function watchSweep() {
+    if (!sweepMode) return;
+    const age = Date.now() - sweepStartedAt;
+
+    if (isLoggedOut()) {
+      endSweep("loggedOut");
+      return;
+    }
+
+    if (collect(GROUPS.inventoryDrops).length) {
+      sweepIdleChecks = 0;
+      queueScan("sweep");
+      return;
+    }
+
+    if (age < SWEEP_SETTLE_MS || (!inventoryRendered() && age < SWEEP_GIVE_UP_MS)) return;
+
+    sweepIdleChecks += 1;
+    if (sweepIdleChecks >= SWEEP_IDLE_CHECKS || age > SWEEP_GIVE_UP_MS) endSweep("done");
+  }
+
+  async function initSweep() {
+    if (!/^\/drops\/inventory/.test(location.pathname)) return;
+
+    let response;
+    try {
+      response = await api.runtime.sendMessage({ type: "sweepStatus" });
+    } catch {
+      return;
+    }
+    if (!response?.sweeping) return;
+
+    sweepMode = true;
+    sweepStartedAt = Date.now();
+    log("sweep mode active, draining inventory");
+    setInterval(watchSweep, 2000);
   }
 
   new MutationObserver(() => queueScan("mutation")).observe(document.documentElement, {
@@ -249,5 +316,6 @@
     stats = stored.stats || {};
     log("active on", location.pathname, settings.enabled ? "(enabled)" : "(paused)");
     queueScan("startup");
+    initSweep();
   });
 })();

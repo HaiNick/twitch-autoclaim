@@ -6,6 +6,9 @@ const DEFAULTS = {
   streamDrops: true,
   inventoryDrops: true,
   playerPrompts: false,
+  autoSweep: false,
+  sweepIntervalMinutes: 60,
+  sweepTimeoutSeconds: 120,
   minDelayMs: 1200,
   maxDelayMs: 4500,
   logToConsole: true
@@ -43,6 +46,8 @@ function renderSettings() {
     input.checked = Boolean(settings[input.dataset.setting]);
   }
 
+  document.getElementById("sweepInterval").value = String(settings.sweepIntervalMinutes);
+  document.getElementById("sweepInterval").disabled = !settings.autoSweep;
   document.getElementById("maxDelay").value = settings.maxDelayMs;
   document.getElementById("delay-readout").textContent =
     `${(settings.minDelayMs / 1000).toFixed(1)}s to ${(settings.maxDelayMs / 1000).toFixed(1)}s`;
@@ -80,11 +85,21 @@ async function save() {
   renderSettings();
 }
 
+function renderSweep(last) {
+  const line = document.getElementById("sweep-last");
+  if (!last) {
+    line.textContent = "no sweep yet";
+    return;
+  }
+  line.textContent = `last sweep ${age(last.at)}: ${last.outcome}`;
+}
+
 async function load() {
-  const stored = await api.storage.local.get(["settings", "stats"]);
+  const stored = await api.storage.local.get(["settings", "stats", "lastSweep"]);
   settings = { ...DEFAULTS, ...(stored.settings || {}) };
   renderSettings();
   renderHealth(stored.stats || {});
+  renderSweep(stored.lastSweep);
 }
 
 document.getElementById("enabled").addEventListener("change", (event) => {
@@ -98,6 +113,17 @@ for (const input of document.querySelectorAll("[data-setting]")) {
     save();
   });
 }
+
+document.getElementById("sweepInterval").addEventListener("change", (event) => {
+  settings.sweepIntervalMinutes = Number(event.target.value);
+  save();
+});
+
+document.getElementById("sweep").addEventListener("click", async () => {
+  say("sweeping...");
+  await api.runtime.sendMessage({ type: "sweepNow" });
+  setTimeout(load, 1500);
+});
 
 document.getElementById("maxDelay").addEventListener("input", (event) => {
   const max = Number(event.target.value);
@@ -133,7 +159,9 @@ document.getElementById("scan").addEventListener("click", async () => {
 });
 
 api.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.stats) renderHealth(changes.stats.newValue || {});
+  if (area !== "local") return;
+  if (changes.stats) renderHealth(changes.stats.newValue || {});
+  if (changes.lastSweep) renderSweep(changes.lastSweep.newValue);
 });
 
 load();

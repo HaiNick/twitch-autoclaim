@@ -43,6 +43,20 @@ The delay slider sets the upper bound of the random wait before a click, from 1 
 
 `playerPrompts` is off by default. It accepts mature content gates and "still watching" prompts, which is convenient for long AFK sessions but means the extension clicks through a consent dialog for you. Turn it on deliberately.
 
+## Inventory sweep
+
+Claiming only happens on a page you have open, so a drop that completes while you are not on the inventory page sits there until you visit it. The sweep automates that visit.
+
+Turn on **Sweep the drops inventory** in the popup and pick an interval. On that timer, the background worker opens `https://www.twitch.tv/drops/inventory` in an inactive background tab, the content script claims everything it finds, reports back, and the worker closes the tab. **Sweep now** runs one immediately. The popup shows the last result, for example `last sweep 12m ago: claimed 2`.
+
+The sweep skips itself in three cases: the extension is paused, `inventoryDrops` is off, or you already have the inventory open in a tab. That last rule keeps it from closing a tab you are using.
+
+Timing inside the sweep tab: claim delays drop to 0.25 to 0.9 seconds, since nobody is watching. The tab closes once no claim button has been visible for three checks in a row, with a 10 second floor to let React render. A `sweep-timeout` alarm closes the tab after 120 seconds no matter what, so a Twitch outage or a login wall cannot leave a stray tab open. If you are logged out, the content script detects the login button and reports back immediately.
+
+This feature adds one permission, `alarms`. It does not add `tabs`: `tabs.create` and `tabs.remove` work without it, and without `tabs` the extension still cannot read the URL or title of anything outside `www.twitch.tv`.
+
+Background tabs are throttled by the browser, which is why the timeout is generous. Chrome clamps timers in a hidden tab to roughly one second, then to once per minute after five minutes hidden. The whole sweep is designed to finish inside that first window.
+
 ## Stats
 
 Click **History** in the popup, or open the extension's options entry, for the full history page. It reads the same `storage.local` data the content script writes:
@@ -76,7 +90,7 @@ If you can only find hashed classes, use the `textScopes` and `textPattern` mech
 
 ## Known limits
 
-- Drops only progress while a qualifying stream is actually playing in a tab. This extension claims, it does not mine. For AFK farming without video, [Twitch Drops Miner](https://github.com/DevilXD/TwitchDropsMiner) talks to the GraphQL API instead, which is a different risk profile.
+- Drops only progress while a qualifying stream is actually playing in a tab. The sweep collects finished drops, it does not advance them. For AFK farming without video, [Twitch Drops Miner](https://github.com/DevilXD/TwitchDropsMiner) talks to the GraphQL API instead, which is a different risk profile.
 - Twitch has shipped anti-automation checks on drop claiming before. If claims start failing, turn the drop groups off and claim from the inventory page by hand for a while.
 - Automating interactions is a gray area under the [Twitch Terms of Service](https://www.twitch.tv/p/legal/terms-of-service/), which restricts automated access to the service. Clicking a button that the site renders for you on a page you have open is the mildest end of it, but it is your account.
 
@@ -84,6 +98,7 @@ If you can only find hashed classes, use the `textScopes` and `textPattern` mech
 
 ```
 manifest.json        permissions and entry points
+src/background.js    sweep scheduling, tab lifecycle, timeout
 src/selectors.js     every DOM assumption, the only file to edit on breakage
 src/content.js       observer, debounce, cooldown, click logic
 src/popup.html/.css/.js   toggles and the selector health readout
@@ -98,4 +113,5 @@ icons/               generated PNGs
 cd test && npm install jsdom
 node selector-test.mjs      # no selector may match Redeem or the points balance
 node stats-render-test.mjs  # history page renders against fake data without errors
+node sweep-test.mjs         # sweep opens one tab, closes it, and never touches a foreign tab
 ```

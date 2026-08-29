@@ -30,6 +30,21 @@
       <input type="range" id="maxDelay" min="1000" max="15000" step="500" />
     </section>
 
+    <section class="group" aria-label="Inventory sweep">
+      <label class="row"><input type="checkbox" data-setting="autoSweep" /><span>Sweep the drops inventory</span></label>
+      <div class="row delay">
+        <span>Every</span>
+        <select id="sweepInterval" class="mono">
+          <option value="30">30 min</option>
+          <option value="60">60 min</option>
+          <option value="120">2 hours</option>
+          <option value="240">4 hours</option>
+          <option value="720">12 hours</option>
+        </select>
+      </div>
+      <p class="hint" id="sweep-last">no sweep yet</p>
+    </section>
+
     <section class="readout" aria-label="Selector health">
       <div class="readout-head">
         <span>selector</span><span>claims</span><span>last seen</span>
@@ -39,6 +54,7 @@
 
     <footer>
       <button id="scan" type="button">Scan this tab</button>
+      <button id="sweep" type="button" class="ghost">Sweep now</button>
       <button id="stats" type="button" class="ghost">History</button>
       <p id="message" class="message"></p>
     </footer>
