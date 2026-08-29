@@ -83,11 +83,23 @@ await respond({ type: "sweepDone", claimed: 9 }, { tab: { id: 999 } }); await wa
 check("ignores sweepDone from an unrelated tab", env.log.removed.length === 0);
 
 // 5. never fight a tab the user already has open
-env = makeEnv({ settings: { enabled: true, autoSweep: true, inventoryDrops: true }, openTabs: [{ id: 7 }] });
+env = makeEnv({
+  settings: { enabled: true, autoSweep: true, inventoryDrops: true },
+  openTabs: [{ id: 7, url: "https://www.twitch.tv/drops/inventory" }]
+});
 run(); await wait();
 await env.listeners.alarm({ name: "sweep" }); await wait();
 check("skips when the inventory is already open", env.log.created.length === 0);
 check("says why it skipped", env.store.lastSweep?.outcome.includes("already open"));
+
+// unrelated tabs must not block the sweep, including ones whose url is hidden
+env = makeEnv({
+  settings: { enabled: true, autoSweep: true, inventoryDrops: true },
+  openTabs: [{ id: 7 }, { id: 8, url: "https://www.twitch.tv/somestreamer" }, { id: 9, url: "https://github.com" }]
+});
+run(); await wait();
+await env.listeners.alarm({ name: "sweep" }); await wait();
+check("other tabs do not block the sweep", env.log.created.length === 1);
 
 // 6. paused extension does not sweep
 env = makeEnv({ settings: { enabled: false, autoSweep: true, inventoryDrops: true } });

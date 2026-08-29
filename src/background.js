@@ -11,9 +11,9 @@
 const api = globalThis.browser ?? globalThis.chrome;
 
 const SWEEP_URL = "https://www.twitch.tv/drops/inventory";
-const SWEEP_MATCH = "https://www.twitch.tv/drops/inventory*";
 const ALARM_SWEEP = "sweep";
 const ALARM_TIMEOUT = "sweep-timeout";
+const STALE_STATE_MS = 10 * 60 * 1000;
 
 const DEFAULTS = {
   enabled: true,
@@ -69,20 +69,28 @@ async function startSweep(trigger) {
   const settings = await getSettings();
 
   if (!settings.enabled || !settings.inventoryDrops) {
-    await report("skipped: claiming is paused");
-    return;
+    const outcome = settings.enabled ? "skipped: inventory claiming is off" : "skipped: claiming is paused";
+    await report(outcome);
+    return outcome;
   }
 
   const state = await getState();
   if (state) {
-    await report("skipped: a sweep is already running");
-    return;
+    const stale = Date.now() - state.startedAt > STALE_STATE_MS;
+    if (!stale) {
+      const outcome = "skipped: a sweep is already running";
+      await report(outcome);
+      return outcome;
+    }
+    await finishSweep("recovered from a stuck sweep");
   }
 
-  const open = await api.tabs.query({ url: SWEEP_MATCH });
+  const all = await api.tabs.query({});
+  const open = all.filter((tab) => typeof tab.url === "string" && tab.url.startsWith(SWEEP_URL));
   if (open.length) {
-    await report("skipped: inventory already open in a tab");
-    return;
+    const outcome = "skipped: inventory already open in a tab";
+    await report(outcome);
+    return outcome;
   }
 
   const tab = await api.tabs.create({ url: SWEEP_URL, active: false });
@@ -90,6 +98,10 @@ async function startSweep(trigger) {
 
   const settle = Math.max(0.5, (Number(settings.sweepTimeoutSeconds) || 120) / 60);
   api.alarms.create(ALARM_TIMEOUT, { delayInMinutes: settle });
+
+  const outcome = `opened tab ${tab.id}`;
+  await report(outcome);
+  return outcome;
 }
 
 api.alarms.onAlarm.addListener((alarm) => {
@@ -113,7 +125,9 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "sweepNow") {
-    startSweep("manual").then(() => sendResponse({ started: true }));
+    startSweep("manual")
+      .then((outcome) => sendResponse({ outcome: outcome || "started" }))
+      .catch((error) => sendResponse({ outcome: `worker error: ${error.message}` }));
     return true;
   }
 

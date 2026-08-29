@@ -121,7 +121,12 @@ document.getElementById("sweepInterval").addEventListener("change", (event) => {
 
 document.getElementById("sweep").addEventListener("click", async () => {
   say("sweeping...");
-  await api.runtime.sendMessage({ type: "sweepNow" });
+  try {
+    const result = await api.runtime.sendMessage({ type: "sweepNow" });
+    say(result?.outcome || "no reply from the background worker");
+  } catch (error) {
+    say(`background worker unreachable: ${error.message}`);
+  }
   setTimeout(load, 1500);
 });
 

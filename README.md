@@ -49,6 +49,8 @@ Claiming only happens on a page you have open, so a drop that completes while yo
 
 Turn on **Sweep the drops inventory** in the popup and pick an interval. On that timer, the background worker opens `https://www.twitch.tv/drops/inventory` in an inactive background tab, the content script claims everything it finds, reports back, and the worker closes the tab. **Sweep now** runs one immediately. The popup shows the last result, for example `last sweep 12m ago: claimed 2`.
 
+If **Sweep now** reports something other than `opened tab N`, the message tells you why. `skipped: inventory already open in a tab` means a tab is already on that page. `background worker unreachable` means the worker did not load, so check `about:debugging` or `chrome://extensions` for a manifest error and reload the extension. A sweep whose state got stuck is cleared automatically after 10 minutes.
+
 The sweep skips itself in three cases: the extension is paused, `inventoryDrops` is off, or you already have the inventory open in a tab. That last rule keeps it from closing a tab you are using.
 
 Timing inside the sweep tab: claim delays drop to 0.25 to 0.9 seconds, since nobody is watching. The tab closes once no claim button has been visible for three checks in a row, with a 10 second floor to let React render. A `sweep-timeout` alarm closes the tab after 120 seconds no matter what, so a Twitch outage or a login wall cannot leave a stray tab open. If you are logged out, the content script detects the login button and reports back immediately.
