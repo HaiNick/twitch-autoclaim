@@ -15,6 +15,7 @@ const SWEEP_URL = "https://www.twitch.tv/drops/inventory";
 const ALARM_SWEEP = "sweep";
 const ALARM_TIMEOUT = "sweep-timeout";
 const STALE_STATE_MS = 10 * 60 * 1000;
+const MIN_SCHEDULED_GAP_MS = 10 * 60 * 1000;
 
 const DEFAULTS = {
   enabled: true,
@@ -43,13 +44,25 @@ async function report(outcome, claimed = 0) {
   await api.storage.local.set({ lastSweep: { at: Date.now(), outcome, claimed } });
 }
 
+/**
+ * Chrome unloads the service worker between events and re-runs this file on
+ * every wake, so syncAlarm must leave a correct alarm alone. Recreating it
+ * unconditionally restarts the countdown on every wake, and because a sweep
+ * wakes the worker itself, that turns any interval into a loop.
+ */
 async function syncAlarm() {
   const settings = await getSettings();
-  await api.alarms.clear(ALARM_SWEEP);
-  if (!settings.enabled || !settings.autoSweep) return;
+  const existing = await api.alarms.get(ALARM_SWEEP);
+
+  if (!settings.enabled || !settings.autoSweep) {
+    if (existing) await api.alarms.clear(ALARM_SWEEP);
+    return;
+  }
 
   const period = Math.max(15, Number(settings.sweepIntervalMinutes) || 60);
-  api.alarms.create(ALARM_SWEEP, { delayInMinutes: 1, periodInMinutes: period });
+  if (existing && existing.periodInMinutes === period) return;
+
+  api.alarms.create(ALARM_SWEEP, { delayInMinutes: period, periodInMinutes: period });
 }
 
 async function finishSweep(outcome, claimed = 0) {
@@ -74,6 +87,17 @@ async function startSweep(trigger) {
     const outcome = settings.enabled ? "skipped: inventory claiming is off" : "skipped: claiming is paused";
     await report(outcome);
     return outcome;
+  }
+
+  // Belt and braces against a duplicated or misfiring alarm: a scheduled sweep
+  // never runs twice inside this window, whatever the alarm does.
+  if (trigger === "schedule") {
+    const { lastSweep } = await api.storage.local.get("lastSweep");
+    if (lastSweep && Date.now() - lastSweep.at < MIN_SCHEDULED_GAP_MS) {
+      // Deliberately does not call report(): overwriting lastSweep.at here
+      // would push the window forward and block the next real sweep too.
+      return "skipped: swept recently";
+    }
   }
 
   const state = await getState();
@@ -154,8 +178,14 @@ api.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
+// Only the three settings the schedule depends on may re-arm the alarm.
+// Re-arming on an unrelated toggle would restart the countdown.
 api.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.settings) syncAlarm();
+  if (area !== "local" || !changes.settings) return;
+  const before = changes.settings.oldValue || {};
+  const after = changes.settings.newValue || {};
+  const keys = ["enabled", "autoSweep", "sweepIntervalMinutes"];
+  if (keys.some((key) => before[key] !== after[key])) syncAlarm();
 });
 
 api.runtime.onInstalled.addListener(syncAlarm);

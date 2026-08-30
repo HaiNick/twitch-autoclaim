@@ -8,7 +8,7 @@ const A_TWITCH_TAB = [{ id: 1, url: "https://www.twitch.tv/somestreamer" }];
 
 function makeEnv({ settings, openTabs = A_TWITCH_TAB }) {
   const store = { settings };
-  const log = { created: [], removed: [], alarms: {}, cleared: [] };
+  const log = { created: [], removed: [], alarms: {}, cleared: [], created_alarms: [] };
   const listeners = {};
 
   globalThis.chrome = {
@@ -20,10 +20,11 @@ function makeEnv({ settings, openTabs = A_TWITCH_TAB }) {
         },
         set: async (obj) => Object.assign(store, structuredClone(obj))
       },
-      onChanged: { addListener: () => {} }
+      onChanged: { addListener: (fn) => { listeners.storage = fn; } }
     },
     alarms: {
-      create: (name, opts) => { log.alarms[name] = opts; },
+      create: (name, opts) => { log.alarms[name] = opts; log.created_alarms.push(name); },
+      get: async (name) => log.alarms[name] ? { name, ...log.alarms[name] } : undefined,
       clear: async (name) => { log.cleared.push(name); delete log.alarms[name]; },
       onAlarm: { addListener: (fn) => { listeners.alarm = fn; } }
     },
@@ -58,6 +59,26 @@ check("alarm created when sweeping is on", env.log.alarms.sweep?.periodInMinutes
 env = makeEnv({ settings: { enabled: true, autoSweep: false } });
 run(); await wait();
 check("no alarm when sweeping is off", !env.log.alarms.sweep);
+
+// 1b. a worker restart must not restart the countdown
+env = makeEnv({ settings: { enabled: true, autoSweep: true, inventoryDrops: true, sweepIntervalMinutes: 60 } });
+run(); await wait();
+check("first arm waits a full interval", env.log.alarms.sweep?.delayInMinutes === 60);
+run(); await wait();  // Chrome re-runs the file on every wake
+run(); await wait();
+check("restarts leave the alarm alone", env.log.created_alarms.filter((n) => n === "sweep").length === 1);
+
+// changing the interval does re-arm
+env.store.settings.sweepIntervalMinutes = 30;
+await env.listeners.storage({ settings: { oldValue: { sweepIntervalMinutes: 60 }, newValue: { sweepIntervalMinutes: 30 } } }, "local");
+await wait();
+check("a new interval re-arms", env.log.alarms.sweep?.periodInMinutes === 30);
+
+// an unrelated toggle does not
+const armsBefore = env.log.created_alarms.length;
+await env.listeners.storage({ settings: { oldValue: { enabled: true, autoSweep: true, sweepIntervalMinutes: 30, playerPrompts: false }, newValue: { enabled: true, autoSweep: true, sweepIntervalMinutes: 30, playerPrompts: true } } }, "local");
+await wait();
+check("an unrelated toggle does not re-arm", env.log.created_alarms.length === armsBefore);
 
 // 2. a scheduled sweep opens one inactive tab
 env = makeEnv({ settings: { enabled: true, autoSweep: true, inventoryDrops: true } });
@@ -143,6 +164,16 @@ env = makeEnv({
 run(); await wait();
 await env.listeners.alarm({ name: "sweep" }); await wait();
 check("gate off means sweep anyway", env.log.created.length === 1);
+
+// a second scheduled sweep right after the first is refused
+env = makeEnv({ settings: { enabled: true, autoSweep: true, inventoryDrops: true } });
+run(); await wait();
+await env.listeners.alarm({ name: "sweep" }); await wait();
+await respond({ type: "sweepDone", claimed: 1 }, { tab: { id: 42 } }); await wait();
+const createdOnce = env.log.created.length;
+await env.listeners.alarm({ name: "sweep" }); await wait();
+check("no second scheduled sweep straight after one", env.log.created.length === createdOnce);
+check("the recent-sweep skip does not overwrite the last result", env.store.lastSweep?.outcome === "claimed 1");
 
 // 6. paused extension does not sweep
 env = makeEnv({ settings: { enabled: false, autoSweep: true, inventoryDrops: true } });

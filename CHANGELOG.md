@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0
+
+- Fixes sweeps running far more often than the chosen interval. Chrome re-runs the service worker file on every wake, and `syncAlarm` recreated the alarm each time with a one minute delay, so the countdown restarted constantly and a sweep, which wakes the worker itself, kept scheduling the next one.
+- `syncAlarm` now leaves a correct alarm in place, and the first sweep waits a full interval instead of one minute.
+- Only `enabled`, `autoSweep`, and `sweepIntervalMinutes` re-arm the alarm. An unrelated toggle no longer restarts the countdown.
+- A scheduled sweep refuses to run within 10 minutes of the previous one, whatever the alarm does.
+
+## 1.4.1
+
+- Renames the extension to Twitch Auto Claim for the store listing.
+
 ## 1.4.0
 
 - Scheduled sweeps run only when a `www.twitch.tv` tab already exists. **Only while Twitch is open** controls this and is on by default. Manual sweeps ignore it.

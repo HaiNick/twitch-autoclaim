@@ -64,6 +64,8 @@ The popup reports the outcome of the last sweep:
 
 Inside the sweep tab, claim delays drop to 0.25 to 0.9 seconds. The tab closes once no claim button has been visible for three consecutive checks, with a 10 second floor that lets Twitch render. A `sweep-timeout` alarm closes the tab after 120 seconds regardless, so an outage or a login wall cannot leave a stray tab behind. If you are signed out, the content script detects the login button and reports back at once. State that gets stuck clears itself after 10 minutes.
 
+Chrome unloads the service worker between events and re-runs `src/background.js` on every wake, so `syncAlarm` checks for an existing alarm and leaves a correct one in place. Recreating it on each wake restarts the countdown, and because a sweep wakes the worker itself, that turns any interval into a loop. As a second guard, a scheduled sweep refuses to run within 10 minutes of the previous one.
+
 The timeout is generous because Chrome throttles hidden tabs. Timers clamp to roughly one second while a tab is hidden, then to once per minute after five minutes. The sweep is sized to finish inside that first window.
 
 This feature needs the `alarms` permission. It does not need `tabs`: `tabs.create` and `tabs.remove` work without it, and withholding `tabs` keeps the extension from reading the URL or title of anything outside `www.twitch.tv`.
