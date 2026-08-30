@@ -1,15 +1,16 @@
 /**
  * Scheduled inventory sweep.
  *
- * On a timer, opens https://www.twitch.tv/drops/inventory in a background tab,
- * lets the content script claim what is there, then closes the tab.
+ * On a timer, opens the drops inventory in a background tab, lets the content
+ * script claim what is there, then closes the tab.
  *
- * Note on permissions: tabs.create and tabs.remove do not require the "tabs"
- * permission. Only "alarms" is added for this feature. The extension still
- * cannot read any tab outside www.twitch.tv.
+ * tabs.create and tabs.remove do not require the "tabs" permission, so only
+ * "alarms" is added for this feature. The extension still cannot read any tab
+ * outside www.twitch.tv.
  */
-const api = globalThis.browser ?? globalThis.chrome;
+importScripts("settings.js");
 
+const api = globalThis.autoclaimApi;
 const TWITCH_ORIGIN = "https://www.twitch.tv/";
 const SWEEP_URL = "https://www.twitch.tv/drops/inventory";
 const ALARM_SWEEP = "sweep";
@@ -17,41 +18,18 @@ const ALARM_TIMEOUT = "sweep-timeout";
 const STALE_STATE_MS = 10 * 60 * 1000;
 const MIN_SCHEDULED_GAP_MS = 10 * 60 * 1000;
 
-const DEFAULTS = {
-  enabled: true,
-  inventoryDrops: true,
-  autoSweep: false,
-  sweepOnlyWithTwitch: true,
-  sweepIntervalMinutes: 60,
-  sweepTimeoutSeconds: 120
-};
-
-async function getSettings() {
-  const stored = await api.storage.local.get("settings");
-  return { ...DEFAULTS, ...(stored.settings || {}) };
-}
-
-async function getState() {
-  const stored = await api.storage.local.get("sweepState");
-  return stored.sweepState || null;
-}
-
-async function setState(state) {
-  await api.storage.local.set({ sweepState: state });
-}
-
-async function report(outcome, claimed = 0) {
-  await api.storage.local.set({ lastSweep: { at: Date.now(), outcome, claimed } });
-}
+const getState = async () => (await api.storage.local.get("sweepState")).sweepState || null;
+const setState = (state) => api.storage.local.set({ sweepState: state });
+const report = (outcome, claimed = 0) => api.storage.local.set({ lastSweep: { at: Date.now(), outcome, claimed } });
 
 /**
  * Chrome unloads the service worker between events and re-runs this file on
  * every wake, so syncAlarm must leave a correct alarm alone. Recreating it
- * unconditionally restarts the countdown on every wake, and because a sweep
- * wakes the worker itself, that turns any interval into a loop.
+ * unconditionally restarts the countdown, and because a sweep wakes the worker
+ * itself, that turns any interval into a loop.
  */
 async function syncAlarm() {
-  const settings = await getSettings();
+  const settings = await globalThis.readSettings();
   const existing = await api.alarms.get(ALARM_SWEEP);
 
   if (!settings.enabled || !settings.autoSweep) {
@@ -75,13 +53,13 @@ async function finishSweep(outcome, claimed = 0) {
     try {
       await api.tabs.remove(state.tabId);
     } catch {
-      // the tab is already gone, which is the outcome we wanted anyway
+      // The tab is already gone, which is the outcome we wanted anyway.
     }
   }
 }
 
 async function startSweep(trigger) {
-  const settings = await getSettings();
+  const settings = await globalThis.readSettings();
 
   if (!settings.enabled || !settings.inventoryDrops) {
     const outcome = settings.enabled ? "skipped: inventory claiming is off" : "skipped: claiming is paused";
@@ -89,8 +67,6 @@ async function startSweep(trigger) {
     return outcome;
   }
 
-  // Belt and braces against a duplicated or misfiring alarm: a scheduled sweep
-  // never runs twice inside this window, whatever the alarm does.
   if (trigger === "schedule") {
     const { lastSweep } = await api.storage.local.get("lastSweep");
     if (lastSweep && Date.now() - lastSweep.at < MIN_SCHEDULED_GAP_MS) {
@@ -102,8 +78,7 @@ async function startSweep(trigger) {
 
   const state = await getState();
   if (state) {
-    const stale = Date.now() - state.startedAt > STALE_STATE_MS;
-    if (!stale) {
+    if (Date.now() - state.startedAt <= STALE_STATE_MS) {
       const outcome = "skipped: a sweep is already running";
       await report(outcome);
       return outcome;
@@ -111,19 +86,17 @@ async function startSweep(trigger) {
     await finishSweep("recovered from a stuck sweep");
   }
 
+  // tabs.query ignores its url filter without the right grant, so filter here.
   const all = await api.tabs.query({});
   const twitch = all.filter((tab) => typeof tab.url === "string" && tab.url.startsWith(TWITCH_ORIGIN));
 
-  // A scheduled sweep should not conjure a Twitch tab out of nowhere. Manual
-  // sweeps skip this check, since pressing the button is the intent.
   if (trigger === "schedule" && settings.sweepOnlyWithTwitch && !twitch.length) {
     const outcome = "skipped: no Twitch tab open";
     await report(outcome);
     return outcome;
   }
 
-  const open = twitch.filter((tab) => tab.url.startsWith(SWEEP_URL));
-  if (open.length) {
+  if (twitch.some((tab) => tab.url.startsWith(SWEEP_URL))) {
     const outcome = "skipped: inventory already open in a tab";
     await report(outcome);
     return outcome;
@@ -131,9 +104,9 @@ async function startSweep(trigger) {
 
   const tab = await api.tabs.create({ url: SWEEP_URL, active: false });
   await setState({ tabId: tab.id, startedAt: Date.now(), trigger });
-
-  const settle = Math.max(0.5, (Number(settings.sweepTimeoutSeconds) || 120) / 60);
-  api.alarms.create(ALARM_TIMEOUT, { delayInMinutes: settle });
+  api.alarms.create(ALARM_TIMEOUT, {
+    delayInMinutes: Math.max(0.5, (Number(settings.sweepTimeoutSeconds) || 120) / 60)
+  });
 
   const outcome = `opened tab ${tab.id}`;
   await report(outcome);
@@ -154,8 +127,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "sweepDone") {
     getState().then((state) => {
       if (!state || state.tabId !== sender.tab?.id) return;
-      const label = message.reason === "loggedOut" ? "not logged in" : `claimed ${message.claimed}`;
-      finishSweep(label, message.claimed || 0);
+      finishSweep(message.reason === "loggedOut" ? "not signed in" : `claimed ${message.claimed}`, message.claimed || 0);
     });
     return false;
   }
@@ -178,10 +150,9 @@ api.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
-// Only the three settings the schedule depends on may re-arm the alarm.
-// Re-arming on an unrelated toggle would restart the countdown.
+// Only the settings the schedule depends on may re-arm the alarm.
 api.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes.settings) return;
+  if (!changes.settings || (area !== "sync" && area !== "local")) return;
   const before = changes.settings.oldValue || {};
   const after = changes.settings.newValue || {};
   const keys = ["enabled", "autoSweep", "sweepIntervalMinutes"];

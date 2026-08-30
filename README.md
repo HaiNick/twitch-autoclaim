@@ -9,7 +9,8 @@ The original extension caused damage because its permissions covered every site.
 - `host_permissions` lists `https://www.twitch.tv/*` and nothing else. On any other site, Chrome injects no code from this extension.
 - `permissions` lists `storage` and `alarms`. There is no `tabs`, `webRequest`, `scripting`, `cookies`, or `<all_urls>`.
 - The extension makes no network requests. It contains no analytics, no telemetry, and no remote code.
-- State lives in `chrome.storage.local`, never `chrome.storage.sync`, so nothing leaves the machine.
+- Your claim history lives in `chrome.storage.local` and never leaves the machine.
+- Your settings live in `chrome.storage.sync`, so they follow your Chrome profile to another computer. Chrome Sync sends them to Google. Nothing else is synced.
 
 To verify the network claim, run `grep -rn "fetch(\|XMLHttpRequest" src/`. It returns nothing.
 
@@ -35,9 +36,7 @@ The popup holds one toggle per selector group:
 - **Channel point bonuses** claims the bonus chest on a stream page.
 - **Drops on the stream page** claims a drop reward shown next to the player.
 - **Drops in the inventory** claims rewards at `https://www.twitch.tv/drops/inventory`.
-- **Player prompts and gates** accepts mature content gates and "still watching" prompts. This one is off by default, because it clicks through a consent dialog on your behalf.
-
-The delay slider sets the upper bound of the random wait before each click, from 1 to 15 seconds; the lower bound follows at half that value. A random delay in the low seconds resembles a person reaching for the chest icon. An instant click on every DOM mutation does not.
+The delay slider sets the upper bound of the random wait before each click, from 2 to 15 seconds; the lower bound follows at half that value. The default upper bound is 4 seconds, because a bonus chest can expire during a longer wait. A random delay in the low seconds resembles a person reaching for the chest icon. An instant click on every DOM mutation does not.
 
 The master switch at the top pauses every group without uninstalling the extension.
 
@@ -74,21 +73,21 @@ This feature needs the `alarms` permission. It does not need `tabs`: `tabs.creat
 
 Click **History** in the popup to open the history page. It reads the same `chrome.storage.local` keys the content script writes:
 
-- Totals over the last 7, 30, or 90 days: claims in range, claims today, best day, and days with activity.
-- A stacked bar per day, colored by selector group.
-- A per-group table showing each group's share of the range and its last successful claim.
-- All-time top channels, taken from the first path segment of the URL at claim time. The inventory records as `(inventory)`.
-- The 25 most recent claims, with timestamp, channel, and group.
+- Totals over 7, 30, or 90 days, or all time: claims in range, claims today, claims per active day, and best day.
+- One column per day, stacked by claim type. Days with nothing show a thin tick, so a sparse history still reads as a pattern.
+- Per-type totals as bars, showing each type's share of the range.
+- Where the claims came from: the drops inventory on its own line, then the channels, all filtered by the selected range.
+- The 12 most recent claims.
 
-**Export JSON** writes the whole store to a file. **Clear history** deletes counts, channels, and events, and leaves your toggles in place.
+**Clear history** deletes the daily buckets and events, and leaves your settings in place.
 
-The store holds 90 days of daily buckets and the 800 most recent events, both pruned on write. A saturated store is roughly 88 KB, well under the quota. Each claim reads and rewrites the history keys, so two Twitch tabs claiming at the same moment do not overwrite each other's totals.
+Daily buckets are never pruned, which is what makes the all-time view exact. A bucket costs roughly 115 bytes, so ten years of daily use stays under 3 percent of the local quota. The event log keeps the 50 most recent claims, since the charts read from the buckets rather than from it. Each claim reads and rewrites the history keys, so two Twitch tabs claiming at the same moment do not overwrite each other's totals.
 
 ## Check selector health
 
-The popup lists three columns per group: the group name, its claim count, and when its selectors last matched anything. That third column is the diagnostic. If channel points reads `3d ago` after a week of watching, Twitch changed its DOM and the selectors need an update. A green value means a match within the hour.
+Each claim row carries its own claim count and the time its selectors last matched, so a group that has gone quiet is visible where you would toggle it. A green value means a match within the hour. If a group that has claimed before stops matching for a day, a line appears at the top of the popup naming it.
 
-**Scan this tab** runs a dry pass over the current page and reports how many elements each group matches, without clicking. Use it while a claim button is visible on screen to confirm the extension can see it.
+**Scan** runs a dry pass over the current page and replaces those counts with live matches for 15 seconds. `n/a` means the group does not apply to this page, which is what inventory drops shows on a stream page. `0` means the group applies and found nothing, which is the signal that a selector broke if you can see a claim button on screen.
 
 ## Update the selectors when Twitch changes its UI
 
@@ -133,6 +132,7 @@ zip -rq ../twitch-autoclaim-1.4.0.zip . -x '.git/*' 'node_modules/*' 'test/*' 's
 
 ```
 manifest.json             permissions and entry points
+src/settings.js           shared defaults, and the sync read with a local fallback
 src/selectors.js          every DOM assumption, the file to edit when Twitch changes
 src/content.js            observer, debounce, cooldown, click logic, sweep mode
 src/background.js         sweep scheduling, tab lifecycle, timeout

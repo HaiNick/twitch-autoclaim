@@ -20,9 +20,8 @@ What it does:
 
 - Claims the channel point bonus chest on a stream page.
 - Claims drop rewards on a stream page and in the drops inventory.
-- Accepts mature content gates so a stream keeps playing. This option is off by default.
 - On a timer, opens the drops inventory in a background tab, claims what is there, and closes the tab. The sweep runs only while a Twitch tab is open, and it is off by default.
-- Records a local history of what it claimed and when, with a daily chart and a JSON export.
+- Records a local history of what it claimed and when, with a daily chart and per-channel totals.
 
 What it does not do:
 
@@ -36,13 +35,13 @@ Every claim is a click on a button that is already visible to you.
 
 | Permission | Justification |
 | --- | --- |
-| `storage` | Saves your toggles and the local claim history. The extension uses `chrome.storage.local`, never `chrome.storage.sync`, so the data stays on the device. |
+| `storage` | Saves the local claim history and the user's settings. History uses `chrome.storage.local` and stays on the device; settings use `chrome.storage.sync` so they follow the user's Chrome profile. |
 | `alarms` | Schedules the optional drops inventory sweep. The sweep cannot run on a timer without it. |
 | `https://www.twitch.tv/*` | The extension reads the page to find the claim button and click it. This is the only host it requests. |
 
 ## Data usage disclosure
 
-Answer no to every data collection category. The extension collects nothing, transmits nothing, and sells nothing. All state stays in `chrome.storage.local` on the user's machine, and Chrome deletes it when the user uninstalls the extension.
+Answer no to every data collection category. The extension makes no network requests, so it transmits nothing itself and sells nothing. Claim history stays in `chrome.storage.local` on the user's machine. Settings use `chrome.storage.sync`, which Chrome copies to the user's own Google account; that is Chrome Sync moving the user's own preferences, not the extension collecting data. The privacy policy states this plainly.
 
 ## Distribution
 

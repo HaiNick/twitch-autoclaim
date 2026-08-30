@@ -20,7 +20,11 @@ function makeEnv({ settings, openTabs = A_TWITCH_TAB }) {
         },
         set: async (obj) => Object.assign(store, structuredClone(obj))
       },
-      onChanged: { addListener: (fn) => { listeners.storage = fn; } }
+      onChanged: { addListener: (fn) => { listeners.storage = fn; } },
+      sync: {
+        get: async (k) => (k === "settings" && store.settings ? { settings: structuredClone(store.settings) } : {}),
+        set: async (obj) => Object.assign(store, structuredClone(obj))
+      }
     },
     alarms: {
       create: (name, opts) => { log.alarms[name] = opts; log.created_alarms.push(name); },
@@ -45,8 +49,10 @@ function makeEnv({ settings, openTabs = A_TWITCH_TAB }) {
 }
 
 const wait = () => new Promise((r) => setTimeout(r, 20));
-const source = fs.readFileSync(path.join(root, "src/background.js"), "utf8");
-const run = () => (0, eval)(source);
+const shared = fs.readFileSync(path.join(root, "src/settings.js"), "utf8");
+const source = fs.readFileSync(path.join(root, "src/background.js"), "utf8")
+  .replace('importScripts("settings.js");', "");
+const run = () => { (0, eval)(shared); (0, eval)(source); };
 
 const checks = [];
 const check = (name, ok) => checks.push([name, ok]);

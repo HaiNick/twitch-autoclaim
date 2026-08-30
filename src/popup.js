@@ -1,173 +1,205 @@
-const api = globalThis.browser ?? globalThis.chrome;
-
-const DEFAULTS = {
-  enabled: true,
-  channelPoints: true,
-  streamDrops: true,
-  inventoryDrops: true,
-  playerPrompts: false,
-  autoSweep: false,
-  sweepOnlyWithTwitch: true,
-  sweepIntervalMinutes: 60,
-  sweepTimeoutSeconds: 120,
-  minDelayMs: 1200,
-  maxDelayMs: 4500,
-  logToConsole: true
-};
+const api = globalThis.autoclaimApi;
+const SCAN_RESET_MS = 15000;
 
 const LABELS = {
   channelPoints: "channel points",
   streamDrops: "stream drops",
-  inventoryDrops: "inventory drops",
-  playerPrompts: "player prompts"
+  inventoryDrops: "inventory drops"
 };
 
-const message = document.getElementById("message");
-let settings = { ...DEFAULTS };
+const STALE_MS = 24 * 60 * 60 * 1000;
+const FRESH_MS = 60 * 60 * 1000;
 
-function say(text) {
-  message.textContent = text;
-}
+let settings = { ...globalThis.AUTOCLAIM_DEFAULTS };
+let stats = {};
+let scan = null;
+let scanTimer = null;
+
+const $ = (id) => document.getElementById(id);
 
 function age(timestamp) {
   if (!timestamp) return "never";
   const seconds = Math.round((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
-  return `${Math.round(seconds / 86400)}d ago`;
+  if (seconds < 60) return "now";
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
+  return `${Math.round(seconds / 86400)}d`;
+}
+
+function renderRows() {
+  const rows = $("rows");
+  rows.textContent = "";
+  $("colright").textContent = scan ? "on this page" : "";
+
+  for (const [key, label] of Object.entries(LABELS)) {
+    const entry = stats[key] || {};
+    const on = Boolean(settings[key]);
+
+    const row = document.createElement("label");
+    row.className = "row" + (on ? "" : " off");
+
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = on;
+    box.addEventListener("change", () => {
+      settings[key] = box.checked;
+      save();
+    });
+
+    const name = document.createElement("span");
+    name.textContent = label;
+
+    const meta = document.createElement("span");
+    meta.className = "meta";
+
+    if (scan) {
+      const matches = scan.report[key];
+      if (matches === null || matches === undefined) {
+        meta.textContent = "n/a";
+      } else if (matches > 0) {
+        meta.textContent = `${matches} found`;
+        meta.classList.add("found");
+        row.classList.add("hit");
+      } else {
+        meta.textContent = "0";
+      }
+    } else if (!on) {
+      meta.textContent = "off";
+    } else {
+      meta.textContent = `${entry.claims || 0} · ${age(entry.lastSeen)}`;
+      if (entry.lastSeen && Date.now() - entry.lastSeen < FRESH_MS) meta.classList.add("fresh");
+    }
+
+    row.append(box, name, meta);
+    rows.append(row);
+  }
+}
+
+/** One line, only when a group that has worked before stops matching. */
+function renderAlert() {
+  const broken = Object.entries(LABELS).find(([key]) => {
+    const entry = stats[key] || {};
+    return settings[key] && entry.claims > 0 && entry.lastSeen && Date.now() - entry.lastSeen > STALE_MS;
+  });
+
+  const alert = $("alert");
+  alert.hidden = !broken;
+  if (broken) alert.textContent = `${LABELS[broken[0]]} stopped matching`;
 }
 
 function renderSettings() {
-  document.body.classList.toggle("active", settings.enabled);
-  document.getElementById("enabled").checked = settings.enabled;
-  document.getElementById("state-label").textContent = settings.enabled ? "on" : "paused";
+  document.body.classList.toggle("paused", !settings.enabled);
+  const master = $("master");
+  master.setAttribute("aria-checked", String(settings.enabled));
+  master.textContent = settings.enabled ? "on" : "paused";
 
   for (const input of document.querySelectorAll("[data-setting]")) {
     input.checked = Boolean(settings[input.dataset.setting]);
   }
 
-  document.getElementById("sweepInterval").value = String(settings.sweepIntervalMinutes);
-  document.getElementById("sweepInterval").disabled = !settings.autoSweep;
-  document.getElementById("maxDelay").value = settings.maxDelayMs;
-  document.getElementById("delay-readout").textContent =
-    `${(settings.minDelayMs / 1000).toFixed(1)}s to ${(settings.maxDelayMs / 1000).toFixed(1)}s`;
-}
+  $("sweepInterval").value = String(settings.sweepIntervalMinutes);
+  $("sweepInterval").disabled = !settings.autoSweep;
 
-function renderHealth(stats) {
-  const container = document.getElementById("health");
-  container.textContent = "";
-
-  for (const [key, label] of Object.entries(LABELS)) {
-    const entry = stats[key] || {};
-    const row = document.createElement("div");
-    row.className = "health-row";
-    if (entry.lastSeen && Date.now() - entry.lastSeen < 3600000) row.classList.add("fresh");
-
-    const name = document.createElement("span");
-    name.className = "name";
-    name.textContent = label;
-
-    const count = document.createElement("span");
-    count.className = "count";
-    count.textContent = String(entry.claims || 0);
-
-    const seen = document.createElement("span");
-    seen.className = "age";
-    seen.textContent = age(entry.lastSeen);
-
-    row.append(name, count, seen);
-    container.append(row);
-  }
-}
-
-async function save() {
-  await api.storage.local.set({ settings });
-  renderSettings();
+  const seconds = Number(settings.maxDelaySeconds) || 4;
+  $("delay").value = String(seconds);
+  $("delayOut").textContent = `${Math.round(seconds / 2)} to ${seconds}s`;
 }
 
 function renderSweep(last) {
-  const line = document.getElementById("sweep-last");
-  if (!last) {
-    line.textContent = "no sweep yet";
-    return;
-  }
-  line.textContent = `last sweep ${age(last.at)}: ${last.outcome}`;
+  $("lastSweep").textContent = last ? `last sweep ${age(last.at)} ago, ${last.outcome}` : "no sweep yet";
+}
+
+async function save() {
+  await globalThis.writeSettings(settings);
+  renderSettings();
+  renderRows();
 }
 
 async function load() {
-  const stored = await api.storage.local.get(["settings", "stats", "lastSweep"]);
-  settings = { ...DEFAULTS, ...(stored.settings || {}) };
+  const [loaded, stored] = await Promise.all([
+    globalThis.readSettings(),
+    api.storage.local.get(["stats", "lastSweep"])
+  ]);
+  settings = loaded;
+  stats = stored.stats || {};
   renderSettings();
-  renderHealth(stored.stats || {});
+  renderRows();
+  renderAlert();
   renderSweep(stored.lastSweep);
 }
 
-document.getElementById("enabled").addEventListener("change", (event) => {
-  settings.enabled = event.target.checked;
+$("master").addEventListener("click", () => {
+  settings.enabled = !settings.enabled;
   save();
 });
 
-for (const input of document.querySelectorAll("[data-setting]")) {
-  input.addEventListener("change", (event) => {
-    settings[event.target.dataset.setting] = event.target.checked;
-    save();
-  });
-}
-
-document.getElementById("sweepInterval").addEventListener("change", (event) => {
+$("sweepInterval").addEventListener("change", (event) => {
   settings.sweepIntervalMinutes = Number(event.target.value);
   save();
 });
 
-document.getElementById("sweep").addEventListener("click", async () => {
-  say("sweeping...");
-  try {
-    const result = await api.runtime.sendMessage({ type: "sweepNow" });
-    say(result?.outcome || "no reply from the background worker");
-  } catch (error) {
-    say(`background worker unreachable: ${error.message}`);
-  }
-  setTimeout(load, 1500);
-});
-
-document.getElementById("maxDelay").addEventListener("input", (event) => {
-  const max = Number(event.target.value);
-  settings.maxDelayMs = max;
-  settings.minDelayMs = Math.min(settings.minDelayMs, Math.round(max / 2));
+$("delay").addEventListener("input", (event) => {
+  settings.maxDelaySeconds = Number(event.target.value);
   save();
 });
 
-document.getElementById("stats").addEventListener("click", () => {
+$("history").addEventListener("click", () => {
   api.runtime.openOptionsPage();
   window.close();
 });
 
-document.getElementById("scan").addEventListener("click", async () => {
-  say("scanning...");
-  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
-  if (!tab) {
-    say("no active tab");
-    return;
+$("sweepNow").addEventListener("click", async () => {
+  const bar = $("scanbar");
+  bar.hidden = false;
+  bar.className = "scanbar";
+  bar.textContent = "sweeping…";
+  try {
+    const result = await api.runtime.sendMessage({ type: "sweepNow" });
+    bar.textContent = result?.outcome || "no reply from the background worker";
+  } catch (error) {
+    bar.className = "scanbar off";
+    bar.textContent = `background worker unreachable: ${error.message}`;
   }
+  setTimeout(load, 1500);
+});
 
+$("scan").addEventListener("click", async () => {
+  const bar = $("scanbar");
+  bar.hidden = false;
+  bar.className = "scanbar";
+  bar.textContent = "scanning…";
+  clearTimeout(scanTimer);
+
+  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   try {
     const result = await api.tabs.sendMessage(tab.id, { type: "scanNow" });
     if (!result) throw new Error("no response");
-    const hits = Object.entries(result.report)
-      .filter(([, group]) => group.applies)
-      .map(([key, group]) => `${LABELS[key] || key}: ${group.matches}`)
-      .join(", ");
-    say(hits || "nothing applies on this page");
+    scan = result;
+    const total = Object.values(result.report).reduce((sum, n) => sum + (n || 0), 0);
+    bar.className = "scanbar ok";
+    bar.textContent = total ? `${total} claimable now, selectors match` : "nothing claimable here";
   } catch {
-    say("open a www.twitch.tv tab and reload it");
+    scan = null;
+    bar.className = "scanbar off";
+    bar.textContent = "not a Twitch page, or reload the tab";
   }
+
+  renderRows();
+  // Claim counts come back on their own, so a stale scan is never mistaken for history.
+  scanTimer = setTimeout(() => {
+    scan = null;
+    bar.hidden = true;
+    renderRows();
+  }, SCAN_RESET_MS);
 });
 
 api.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local") return;
-  if (changes.stats) renderHealth(changes.stats.newValue || {});
-  if (changes.lastSweep) renderSweep(changes.lastSweep.newValue);
+  if (area === "local" && changes.stats) {
+    stats = changes.stats.newValue || {};
+    renderRows();
+    renderAlert();
+  }
+  if (area === "local" && changes.lastSweep) renderSweep(changes.lastSweep.newValue);
 });
 
 load();

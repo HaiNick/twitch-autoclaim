@@ -7,59 +7,54 @@
   </head>
   <body>
     <header class="bar">
-      <span class="dot" id="state-dot" aria-hidden="true"></span>
+      <span class="dot" id="dot" aria-hidden="true"></span>
       <h1>Auto claim</h1>
-      <label class="master">
-        <input type="checkbox" id="enabled" />
-        <span id="state-label">on</span>
-      </label>
+      <button id="master" class="master" type="button" role="switch" aria-checked="true">on</button>
     </header>
 
-    <section class="group" aria-label="What to claim">
-      <label class="row"><input type="checkbox" data-setting="channelPoints" /><span>Channel point bonuses</span></label>
-      <label class="row"><input type="checkbox" data-setting="streamDrops" /><span>Drops on the stream page</span></label>
-      <label class="row"><input type="checkbox" data-setting="inventoryDrops" /><span>Drops in the inventory</span></label>
-      <label class="row"><input type="checkbox" data-setting="playerPrompts" /><span>Player prompts and gates</span></label>
+    <p class="alert" id="alert" hidden></p>
+    <p class="scanbar" id="scanbar" hidden></p>
+
+    <section class="block" aria-label="Claims">
+      <div class="head"><span>claims</span><span id="colright"></span></div>
+      <div id="rows"></div>
     </section>
 
-    <section class="group" aria-label="Click delay">
-      <div class="row delay">
-        <span>Click delay</span>
-        <span class="mono" id="delay-readout">1.2s to 4.5s</span>
-      </div>
-      <input type="range" id="maxDelay" min="1000" max="15000" step="500" />
-    </section>
-
-    <section class="group" aria-label="Inventory sweep">
-      <label class="row"><input type="checkbox" data-setting="autoSweep" /><span>Sweep the drops inventory</span></label>
-      <label class="row"><input type="checkbox" data-setting="sweepOnlyWithTwitch" /><span>Only while Twitch is open</span></label>
-      <div class="row delay">
-        <span>Every</span>
-        <select id="sweepInterval" class="mono">
+    <section class="block" aria-label="Sweep">
+      <div class="head"><span>sweep</span></div>
+      <label class="row">
+        <input type="checkbox" data-setting="autoSweep" />
+        <span>Drops inventory, every</span>
+        <select id="sweepInterval" aria-label="Sweep interval">
           <option value="30">30 min</option>
           <option value="60">60 min</option>
-          <option value="120">2 hours</option>
-          <option value="240">4 hours</option>
-          <option value="720">12 hours</option>
+          <option value="120">2 h</option>
+          <option value="240">4 h</option>
+          <option value="720">12 h</option>
         </select>
-      </div>
-      <p class="hint" id="sweep-last">no sweep yet</p>
+      </label>
+      <label class="row">
+        <input type="checkbox" data-setting="sweepOnlyWithTwitch" />
+        <span>Only while Twitch is open</span>
+      </label>
+      <p class="hint" id="lastSweep">no sweep yet</p>
     </section>
 
-    <section class="readout" aria-label="Selector health">
-      <div class="readout-head">
-        <span>selector</span><span>claims</span><span>last seen</span>
+    <section class="block" aria-label="Click delay">
+      <div class="row delay">
+        <span>Click delay</span>
+        <input type="range" id="delay" min="2" max="15" step="1" aria-label="Click delay in seconds" />
+        <span class="mono" id="delayOut">2 to 4s</span>
       </div>
-      <div id="health"></div>
     </section>
 
     <footer>
-      <button id="scan" type="button">Scan this tab</button>
-      <button id="sweep" type="button" class="ghost">Sweep now</button>
-      <button id="stats" type="button" class="ghost">History</button>
-      <p id="message" class="message"></p>
+      <button id="sweepNow" type="button" class="primary">Sweep now</button>
+      <button id="scan" type="button">Scan</button>
+      <button id="history" type="button">History</button>
     </footer>
 
+    <script src="settings.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

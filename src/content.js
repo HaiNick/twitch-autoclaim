@@ -1,29 +1,17 @@
 (() => {
   "use strict";
 
-  const api = globalThis.browser ?? globalThis.chrome;
+  const api = globalThis.autoclaimApi;
   const GROUPS = globalThis.TWITCH_AUTOCLAIM_SELECTORS;
+  const SWEEP_LABEL = "drops inventory";
 
-  const DEFAULTS = {
-    enabled: true,
-    channelPoints: true,
-    streamDrops: true,
-    inventoryDrops: true,
-    playerPrompts: false,
-    minDelayMs: 1200,
-    maxDelayMs: 4500,
-    logToConsole: true
-  };
-
-  let settings = { ...DEFAULTS };
+  let settings = { ...globalThis.AUTOCLAIM_DEFAULTS };
   let stats = {};
   let running = false;
   let pendingScan = null;
   let lastPath = location.pathname;
   let statsFlushedAt = 0;
 
-  // sweep mode: this tab was opened by the background worker to drain the
-  // inventory, so it claims fast and reports back when there is nothing left
   let sweepMode = false;
   let sweepClaims = 0;
   let sweepIdleChecks = 0;
@@ -33,8 +21,7 @@
   const SCAN_DEBOUNCE_MS = 400;
   const SAFETY_INTERVAL_MS = 5000;
   const STATS_FLUSH_MS = 5000;
-  const HISTORY_DAYS = 90;
-  const MAX_EVENTS = 800;
+  const MAX_EVENTS = 50;
   const SWEEP_MIN_DELAY_MS = 250;
   const SWEEP_MAX_DELAY_MS = 900;
   const SWEEP_SETTLE_MS = 10000;
@@ -42,7 +29,6 @@
   const SWEEP_IDLE_CHECKS = 3;
 
   const clicked = new WeakMap();
-
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   function log(...args) {
@@ -51,8 +37,8 @@
 
   function randomDelay() {
     if (sweepMode) return SWEEP_MIN_DELAY_MS + Math.random() * (SWEEP_MAX_DELAY_MS - SWEEP_MIN_DELAY_MS);
-    const min = Math.max(0, Number(settings.minDelayMs) || 0);
-    const max = Math.max(min, Number(settings.maxDelayMs) || min);
+    const max = Math.max(2, Number(settings.maxDelaySeconds) || 4) * 1000;
+    const min = max / 2;
     return min + Math.random() * (max - min);
   }
 
@@ -64,17 +50,16 @@
     return style.visibility !== "hidden" && style.display !== "none" && style.pointerEvents !== "none";
   }
 
-  function isDisabled(el) {
-    return el.disabled === true || el.getAttribute("aria-disabled") === "true";
-  }
-
-  function accessibleName(el) {
-    return (el.getAttribute("aria-label") || el.textContent || "").trim();
-  }
+  const isDisabled = (el) => el.disabled === true || el.getAttribute("aria-disabled") === "true";
+  const accessibleName = (el) => (el.getAttribute("aria-label") || el.textContent || "").trim();
 
   function onCooldown(el) {
     const last = clicked.get(el);
     return typeof last === "number" && Date.now() - last < CLICK_COOLDOWN_MS;
+  }
+
+  function applies(group) {
+    return !group.pathTest || group.pathTest.test(location.pathname);
   }
 
   function collect(group) {
@@ -127,10 +112,12 @@
     }
   }
 
+  /** Inventory claims belong to the sweep, not to whatever channel you last watched. */
   function currentChannel() {
-    if (/^\/drops\/inventory/.test(location.pathname)) return "(inventory)";
-    const segment = location.pathname.split("/").filter(Boolean)[0] || "(home)";
-    return /^(directory|drops|settings|u|videos|search|following)$/.test(segment) ? `(${segment})` : segment;
+    if (/^\/drops\/inventory/.test(location.pathname)) return null;
+    const segment = location.pathname.split("/").filter(Boolean)[0];
+    if (!segment) return null;
+    return /^(directory|drops|settings|u|videos|search|following|subscriptions|wallet)$/.test(segment) ? null : segment;
   }
 
   function dayKey(timestamp) {
@@ -141,33 +128,30 @@
   /**
    * History is read-modify-written on every claim rather than held in memory,
    * so two Twitch tabs claiming at the same time do not overwrite each other.
+   * Daily buckets are never pruned: a bucket costs roughly 115 bytes, so a
+   * decade of daily use stays under 3 percent of the local quota, and keeping
+   * them is what makes the all-time view exact.
    */
   async function appendHistory(name) {
     const at = Date.now();
     const channel = currentChannel();
-    const stored = await api.storage.local.get(["daily", "channels", "events"]);
+    const stored = await api.storage.local.get(["daily", "events"]);
 
     const daily = stored.daily || {};
     const key = dayKey(at);
-    daily[key] = daily[key] || {};
-    daily[key][name] = (daily[key][name] || 0) + 1;
-
-    const cutoff = at - HISTORY_DAYS * 86400000;
-    for (const day of Object.keys(daily)) {
-      if (new Date(`${day}T23:59:59`).getTime() < cutoff) delete daily[day];
+    const bucket = daily[key] || { channels: {} };
+    bucket[name] = (bucket[name] || 0) + 1;
+    if (channel) {
+      bucket.channels = bucket.channels || {};
+      bucket.channels[channel] = (bucket.channels[channel] || 0) + 1;
     }
-
-    const channels = stored.channels || {};
-    const channelEntry = channels[channel] || { claims: 0, lastClaim: null };
-    channelEntry.claims += 1;
-    channelEntry.lastClaim = at;
-    channels[channel] = channelEntry;
+    daily[key] = bucket;
 
     const events = stored.events || [];
-    events.push({ at, group: name, channel });
+    events.push({ at, group: name, channel: channel || SWEEP_LABEL });
     if (events.length > MAX_EVENTS) events.splice(0, events.length - MAX_EVENTS);
 
-    await api.storage.local.set({ daily, channels, events });
+    await api.storage.local.set({ daily, events });
   }
 
   async function scan(reason) {
@@ -175,8 +159,7 @@
     running = true;
     try {
       for (const [name, group] of Object.entries(GROUPS)) {
-        if (!settings[group.toggle]) continue;
-        if (group.pathTest && !group.pathTest.test(location.pathname)) continue;
+        if (!settings[group.toggle] || !applies(group)) continue;
 
         const targets = collect(group);
         if (!targets.length) continue;
@@ -214,26 +197,17 @@
     }, SCAN_DEBOUNCE_MS);
   }
 
+  /** Reports matches per group without clicking. null means the group does not apply here. */
   function dryRun() {
     const report = {};
     for (const [name, group] of Object.entries(GROUPS)) {
-      const applies = !group.pathTest || group.pathTest.test(location.pathname);
-      report[name] = {
-        label: group.label,
-        applies,
-        matches: applies ? collect(group).length : 0
-      };
+      report[name] = applies(group) ? collect(group).length : null;
     }
-    return { url: location.pathname, report };
+    return { path: location.pathname, twitch: true, report };
   }
 
-  function isLoggedOut() {
-    return Boolean(document.querySelector('[data-a-target="login-button"]'));
-  }
-
-  function inventoryRendered() {
-    return Boolean(document.querySelector('[data-test-selector*="Drops" i], [class*="inventory" i]'));
-  }
+  const isLoggedOut = () => Boolean(document.querySelector('[data-a-target="login-button"]'));
+  const inventoryRendered = () => Boolean(document.querySelector('[data-test-selector*="Drops" i], [class*="inventory" i]'));
 
   function endSweep(reason) {
     if (!sweepMode) return;
@@ -298,9 +272,12 @@
   });
 
   api.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local") return;
-    if (changes.settings) settings = { ...DEFAULTS, ...changes.settings.newValue };
-    if (changes.stats && changes.stats.newValue) stats = changes.stats.newValue;
+    if (changes.settings && (area === "sync" || area === "local")) {
+      globalThis.readSettings().then((next) => {
+        settings = next;
+      });
+    }
+    if (area === "local" && changes.stats?.newValue) stats = changes.stats.newValue;
   });
 
   api.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -311,8 +288,8 @@
     return false;
   });
 
-  api.storage.local.get(["settings", "stats"]).then((stored) => {
-    settings = { ...DEFAULTS, ...(stored.settings || {}) };
+  Promise.all([globalThis.readSettings(), api.storage.local.get("stats")]).then(([loaded, stored]) => {
+    settings = loaded;
     stats = stored.stats || {};
     log("active on", location.pathname, settings.enabled ? "(enabled)" : "(paused)");
     queueScan("startup");

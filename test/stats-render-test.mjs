@@ -5,41 +5,35 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// three days of fake history, including an empty day and two groups on one day
-const now = Date.now();
 const day = (offset) => {
-  const d = new Date(now - offset * 86400000);
+  const d = new Date(Date.now() - offset * 86400000);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+const now = Date.now();
 const store = {
   daily: {
-    [day(0)]: { channelPoints: 4, streamDrops: 1 },
-    [day(1)]: { channelPoints: 7 },
-    [day(3)]: { inventoryDrops: 2, playerPrompts: 1 }
-  },
-  channels: {
-    hasanabi: { claims: 9, lastClaim: now - 3600000 },
-    "(inventory)": { claims: 2, lastClaim: now - 200000000 }
+    [day(0)]: { channelPoints: 3, inventoryDrops: 4, channels: { syrix: 3 } },
+    [day(1)]: { channelPoints: 7, channels: { syrix: 4, nmplol: 3 } },
+    [day(3)]: { inventoryDrops: 2 },
+    [day(200)]: { channelPoints: 5, channels: { oldstreamer: 5 } }
   },
   events: [
-    { at: now - 500000, group: "channelPoints", channel: "hasanabi" },
-    { at: now - 100000, group: "streamDrops", channel: "hasanabi" }
-  ],
-  stats: { channelPoints: { claims: 11, lastSeen: now, lastClaim: now - 500000 } }
+    { at: now - 500000, group: "channelPoints", channel: "syrix" },
+    { at: now - 100000, group: "inventoryDrops", channel: "drops inventory" }
+  ]
 };
 
 const html = fs.readFileSync(path.join(root, "src/stats.html"), "utf8");
 const dom = new JSDOM(html, {
-  url: "moz-extension://test/src/stats.html",
+  url: "chrome-extension://test/src/stats.html",
   runScripts: "dangerously",
   pretendToBeVisual: true,
   beforeParse(window) {
     window.chrome = {
       storage: {
-        local: {
-          get: async () => structuredClone(store),
-          set: async () => {}
-        },
+        local: { get: async () => structuredClone(store), set: async () => {} },
+        sync: { get: async () => ({}), set: async () => {} },
         onChanged: { addListener: () => {} }
       },
       runtime: { openOptionsPage: () => {} }
@@ -49,24 +43,39 @@ const dom = new JSDOM(html, {
 
 const errors = [];
 dom.window.addEventListener("error", (e) => errors.push(e.message));
+dom.window.eval(fs.readFileSync(path.join(root, "src/settings.js"), "utf8"));
 dom.window.eval(fs.readFileSync(path.join(root, "src/stats.js"), "utf8"));
-
 await new Promise((r) => setTimeout(r, 60));
-const d = dom.window.document;
 
-const checks = [
-  ["totals rendered", d.getElementById("total-range").textContent !== "0"],
-  ["today rendered", d.getElementById("total-today").textContent === "5"],
-  ["best day is 7", d.getElementById("best-day").textContent === "7"],
-  ["active days is 3", d.getElementById("active-days").textContent === "3"],
-  ["chart drew bars", d.querySelectorAll("#chart svg rect").length === 5],
-  ["chart empty hidden", d.getElementById("chart-empty").hidden === true],
-  ["group rows", d.querySelectorAll("#groups tbody tr").length === 4],
-  ["channel rows", d.querySelectorAll("#channels tbody tr").length === 2],
-  ["events newest first", d.querySelector("#events li .what").textContent === "stream drops"],
-  ["legend", d.querySelectorAll("#legend li").length === 4],
-  ["no runtime errors", errors.length === 0]
-];
+const d = dom.window.document;
+const click = (sel) => d.querySelector(sel).dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+
+const checks = [];
+const check = (name, ok) => checks.push([name, ok]);
+
+check("30d total counts only the last 30 days", d.getElementById("total").textContent === "16");
+check("today", d.getElementById("today").textContent === "7");
+check("best day", d.getElementById("best").textContent === "7");
+check("rate per active day", d.getElementById("rate").textContent === "5.3");
+check("strip has one column per day", d.querySelectorAll("#strip .col").length === 30);
+check("empty days render a tick", d.querySelectorAll("#strip .empty").length === 27);
+check("three claim-type bars", d.querySelectorAll("#bars .bar").length === 3);
+check("sweep line shows inventory total", d.querySelector("#sweepline .n").textContent === "6");
+check("channels are ranked", d.querySelector("#channels .channel span").textContent === "syrix");
+check("channels exclude the inventory", !d.getElementById("channels").textContent.includes("inventory"));
+check("recent is newest first", d.querySelector("#recent .event span:nth-child(2)").textContent === "drops inventory");
+
+click('[data-range="7"]');
+await new Promise((r) => setTimeout(r, 20));
+check("7d narrows the total", d.getElementById("total").textContent === "16");
+check("7d narrows the strip", d.querySelectorAll("#strip .col").length === 7);
+
+click('[data-range="0"]');
+await new Promise((r) => setTimeout(r, 20));
+check("all time includes the old day", d.getElementById("total").textContent === "21");
+check("all time reaches back to the oldest bucket", d.querySelectorAll("#strip .col").length === 201);
+check("all time picks up the old channel", d.getElementById("channels").textContent.includes("oldstreamer"));
+check("no runtime errors", errors.length === 0);
 
 let failed = 0;
 for (const [name, ok] of checks) {

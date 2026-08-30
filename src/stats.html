@@ -7,61 +7,54 @@
   </head>
   <body>
     <main>
-      <header class="page-head">
+      <header class="top">
         <h1>Auto claim history</h1>
-        <div class="range" role="group" aria-label="Time range">
+        <div class="range" id="range" role="group" aria-label="Time range">
           <button type="button" data-range="7">7d</button>
           <button type="button" data-range="30" class="on">30d</button>
           <button type="button" data-range="90">90d</button>
+          <button type="button" data-range="0">all</button>
         </div>
       </header>
 
-      <section class="totals" aria-label="Summary">
-        <div class="tile"><span class="figure" id="total-range">0</span><span class="caption" id="total-caption">claims in 30 days</span></div>
-        <div class="tile"><span class="figure" id="total-today">0</span><span class="caption">claims today</span></div>
-        <div class="tile"><span class="figure" id="best-day">0</span><span class="caption" id="best-day-caption">best day</span></div>
-        <div class="tile"><span class="figure" id="active-days">0</span><span class="caption">days with activity</span></div>
+      <section class="summary" aria-label="Summary">
+        <div class="lead">
+          <span class="big" id="total">0</span>
+          <span class="cap" id="totalCap">claims in 30 days</span>
+        </div>
+        <div class="side">
+          <div><span id="today">0</span><small>today</small></div>
+          <div><span id="rate">0</span><small>per active day</small></div>
+          <div><span id="best">0</span><small>best day</small></div>
+        </div>
       </section>
 
-      <section class="chart-block" aria-label="Claims per day">
-        <div class="block-head">
-          <h2>Claims per day</h2>
-          <ul class="legend" id="legend"></ul>
-        </div>
-        <div id="chart"></div>
-        <p class="empty" id="chart-empty" hidden>No claims recorded yet. Open a stream with the extension enabled and the first bar appears here.</p>
-      </section>
+      <div class="strip" id="strip"></div>
+      <div class="axis"><span id="from"></span><span id="hover">hover a day</span><span id="to"></span></div>
 
       <div class="split">
-        <section aria-label="By selector group">
-          <h2>By selector group</h2>
-          <table id="groups">
-            <thead><tr><th>group</th><th>claims</th><th>share</th><th>last claim</th></tr></thead>
-            <tbody></tbody>
-          </table>
+        <section aria-label="By claim type">
+          <div class="head">by claim type</div>
+          <div id="bars"></div>
         </section>
-
-        <section aria-label="By channel">
-          <h2>Top channels</h2>
-          <table id="channels">
-            <thead><tr><th>channel</th><th>claims</th><th>last claim</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="note">Channel totals are all-time and are not filtered by the range above.</p>
+        <section aria-label="Where">
+          <div class="head">where</div>
+          <div class="sweepline" id="sweepline"></div>
+          <div id="channels"></div>
         </section>
       </div>
 
       <section aria-label="Recent claims">
-        <h2>Recent claims</h2>
-        <ol id="events" class="events"></ol>
+        <div class="head">recent</div>
+        <div id="recent"></div>
       </section>
 
       <footer>
-        <button id="export" type="button">Export JSON</button>
-        <button id="clear" type="button" class="ghost">Clear history</button>
-        <span class="note" id="message"></span>
+        <button id="clear" type="button">Clear history</button>
+        <span class="hint" id="message"></span>
       </footer>
     </main>
+    <script src="settings.js"></script>
     <script src="stats.js"></script>
   </body>
 </html>

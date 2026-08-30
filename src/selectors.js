@@ -1,6 +1,6 @@
 /**
- * Every assumption about Twitch's DOM lives in this file.
- * When Twitch ships a UI change, this is the only file you need to edit.
+ * Every assumption about Twitch's DOM lives in this file. When Twitch ships a
+ * UI change, this is the only file you need to edit.
  *
  * Each group has:
  *   toggle      key in the settings object that enables the group
@@ -11,13 +11,13 @@
  *   textPattern accessible-name pattern used inside textScopes only
  *
  * Rule for adding selectors: never match a bare `button` outside a scope.
- * Twitch reuses generic button classes for reward redemption, subscribing,
- * and gifting, so an unscoped match can spend points instead of claiming them.
+ * Twitch reuses generic button classes for reward redemption, subscribing, and
+ * gifting, so an unscoped match can spend points instead of claiming them.
  */
 globalThis.TWITCH_AUTOCLAIM_SELECTORS = {
   channelPoints: {
     toggle: "channelPoints",
-    label: "Channel point bonus",
+    label: "channel points",
     selectors: [
       '[data-test-selector="community-points-summary"] button[aria-label*="claim" i]',
       '[data-test-selector="community-points-summary"] button[aria-label*="bonus" i]',
@@ -35,7 +35,7 @@ globalThis.TWITCH_AUTOCLAIM_SELECTORS = {
 
   streamDrops: {
     toggle: "streamDrops",
-    label: "Drop claim on stream",
+    label: "stream drops",
     selectors: [
       '[data-test-selector="DropsCampaignInProgressRewardPresentation-claim-button"]',
       'button[data-a-target="drops-claim-button"]',
@@ -51,7 +51,7 @@ globalThis.TWITCH_AUTOCLAIM_SELECTORS = {
 
   inventoryDrops: {
     toggle: "inventoryDrops",
-    label: "Drop claim in inventory",
+    label: "inventory drops",
     pathTest: /^\/drops\/inventory/,
     selectors: [
       '[data-test-selector="DropsCampaignInProgressRewardPresentation-claim-button"]',
@@ -62,20 +62,5 @@ globalThis.TWITCH_AUTOCLAIM_SELECTORS = {
       '[class*="inventory" i]'
     ],
     textPattern: /^(claim|claim now|einlösen)/i
-  },
-
-  playerPrompts: {
-    toggle: "playerPrompts",
-    label: "Player interruptions",
-    selectors: [
-      'button[data-a-target="player-overlay-mature-accept"]',
-      'button[data-a-target="content-classification-gate-overlay-start-watching-button"]'
-    ],
-    textScopes: [
-      '[data-a-target="player-overlay-click-handler"]',
-      '[class*="content-overlay-gate" i]',
-      '[class*="player-overlay" i]'
-    ],
-    textPattern: /^(start watching|continue watching|still watching|i'?m still here|weiter ansehen)/i
   }
 };

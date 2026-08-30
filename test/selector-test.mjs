@@ -19,9 +19,6 @@ const html = `
   <div data-test-selector="DropsCampaignInProgressRewardPresentation">
     <button data-test-selector="DropsCampaignInProgressRewardPresentation-claim-button" style="width:80px;height:30px">Claim Now</button>
   </div>
-  <div class="content-overlay-gate">
-    <button data-a-target="player-overlay-mature-accept" style="width:80px;height:30px">Start Watching</button>
-  </div>
 </body>`;
 
 const dom = new JSDOM(html, { url: "https://www.twitch.tv/drops/inventory", pretendToBeVisual: true });
@@ -38,6 +35,8 @@ dom.window.Element.prototype.getBoundingClientRect = function () {
 };
 
 eval(fs.readFileSync(path.join(root, "src/selectors.js"), "utf8"));
+if (Object.keys(globalThis.TWITCH_AUTOCLAIM_SELECTORS).length !== 3) { console.log("FAIL  exactly three claim groups"); process.exit(1); }
+console.log("PASS  exactly three claim groups");
 const GROUPS = globalThis.TWITCH_AUTOCLAIM_SELECTORS;
 
 const isVisible = (el) => {

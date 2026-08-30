@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.0
+
+- Settings now live in `chrome.storage.sync`, so they follow your Chrome profile to another computer. Reads fall back to a local copy when sync is off or unavailable, and writes always keep one. History stays local.
+- Removes the player prompts group. It never matched anything on a real page, and it was the only feature that clicked a consent dialog on your behalf.
+- Rebuilds the popup. Each claim row carries its own claim count and last-seen, replacing the separate readout table, and a line appears at the top when a group that used to work stops matching.
+- **Scan** now reports live matches in the rows themselves, distinguishing `n/a` for a group that does not apply from `0` for one that applies and found nothing.
+- Rebuilds the history page: an all-time range, one column per day with a tick for empty days, per-type bars, and a `where` section that splits the drops inventory from the channels.
+- Channel totals follow the selected range. Channel counts moved into the daily buckets, which removes the unbounded all-time `channels` store.
+- Daily buckets are no longer pruned at 90 days, which is what makes all time exact. The event log shrank from 800 entries to 50.
+- Removes the JSON export.
+- Default click delay is 2 to 4 seconds rather than up to 15, because a bonus chest can expire during a longer wait.
+
 ## 1.5.0
 
 - Fixes sweeps running far more often than the chosen interval. Chrome re-runs the service worker file on every wake, and `syncAlarm` recreated the alarm each time with a one minute delay, so the countdown restarted constantly and a sweep, which wakes the worker itself, kept scheduling the next one.
