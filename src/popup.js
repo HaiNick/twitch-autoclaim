@@ -98,7 +98,6 @@ function renderSettings() {
   }
 
   $("sweepInterval").value = String(settings.sweepIntervalMinutes);
-  $("sweepInterval").disabled = !settings.autoSweep;
 
   const seconds = Number(settings.maxDelaySeconds) || 4;
   $("delay").value = String(seconds);
@@ -126,6 +125,13 @@ async function load() {
   renderRows();
   renderAlert();
   renderSweep(stored.lastSweep);
+}
+
+for (const input of document.querySelectorAll("[data-setting]")) {
+  input.addEventListener("change", (event) => {
+    settings[event.target.dataset.setting] = event.target.checked;
+    save();
+  });
 }
 
 $("master").addEventListener("click", () => {

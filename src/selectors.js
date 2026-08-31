@@ -18,6 +18,11 @@ globalThis.TWITCH_AUTOCLAIM_SELECTORS = {
   channelPoints: {
     toggle: "channelPoints",
     label: "channel points",
+    // In fullscreen, Twitch leaves chat mounted under an ancestor with
+    // display:none. A click still reaches React through a hidden subtree, so
+    // the visibility guard is waived for elements inside this container, and
+    // only while the document is actually fullscreen.
+    hiddenInFullscreen: '[data-test-selector="community-points-summary"], [class*="community-points" i]',
     selectors: [
       '[data-test-selector="community-points-summary"] button[aria-label*="claim" i]',
       '[data-test-selector="community-points-summary"] button[aria-label*="bonus" i]',

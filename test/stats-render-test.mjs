@@ -61,9 +61,11 @@ check("strip has one column per day", d.querySelectorAll("#strip .col").length =
 check("empty days render a tick", d.querySelectorAll("#strip .empty").length === 27);
 check("three claim-type bars", d.querySelectorAll("#bars .bar").length === 3);
 check("sweep line shows inventory total", d.querySelector("#sweepline .n").textContent === "6");
-check("channels are ranked", d.querySelector("#channels .channel span").textContent === "syrix");
+check("channels are ranked", d.querySelector("#channels .channel .name").textContent === "syrix");
+check("the sweep swatch does not stretch", d.querySelector("#sweepline .swatch").className === "swatch");
+check("the sweep label is the flexible cell", d.querySelector("#sweepline .name").textContent === "drops inventory");
 check("channels exclude the inventory", !d.getElementById("channels").textContent.includes("inventory"));
-check("recent is newest first", d.querySelector("#recent .event span:nth-child(2)").textContent === "drops inventory");
+check("recent is newest first", d.querySelector("#recent .event .name").textContent === "drops inventory");
 
 click('[data-range="7"]');
 await new Promise((r) => setTimeout(r, 20));

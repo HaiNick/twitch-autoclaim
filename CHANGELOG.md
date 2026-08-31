@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.1.2
+
+- Claims the bonus chest in fullscreen. Twitch keeps chat mounted there but puts an ancestor 21 levels up into `display:none`, and a click through that hidden subtree still reaches React, verified against a live chest. The guard now waives its rendered check, but only when the group opts in, the document is fullscreen, and the element sits inside that group's named container. Channel points is the only group that opts in.
+
+## 2.1.1
+
+- Fixes claiming not working in fullscreen. Twitch keeps the chat column mounted but collapses it to zero size, and the visibility guard rejected anything smaller than two pixels. That test was wrong to begin with: `HTMLElement.click()` dispatches to React's listener without hit-testing, so a zero-size button clicks fine. The guard now asks whether the element is rendered at all, through `checkVisibility` with an ancestor walk as the fallback, and never measures it.
+- Scans on entering and leaving fullscreen, rather than waiting for the next five second tick.
+
+## 2.1.0
+
+- Withdrawn. Its fullscreen diagnosis was wrong: the chat column is collapsed, not unmounted.
+
+## 2.0.2
+
+- Fixes the sweep checkboxes not saving. The rewrite in 2.0.0 read the `[data-setting]` inputs but never attached a change handler, so toggling **Drops inventory** or **Only while Twitch is open** did nothing and the next render put the box back.
+- The sweep interval is no longer disabled while sweeping is off. A disabled control gives no feedback and no reason.
+
+## 2.0.1
+
+- Fixes the coloured dot on the drops inventory line stretching across the column. A `span:first-of-type` rule was matching the dot instead of the label.
+
 ## 2.0.0
 
 - Settings now live in `chrome.storage.sync`, so they follow your Chrome profile to another computer. Reads fall back to a local copy when sync is off or unavailable, and writes always keep one. History stays local.

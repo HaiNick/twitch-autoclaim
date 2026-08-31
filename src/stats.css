@@ -96,7 +96,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 24px 56px; }
 }
 
 .sweepline { border-bottom: 0.5px solid var(--line); margin-bottom: 6px; }
-.sweepline span:first-of-type, .channel span:first-child { flex: 1; }
+.sweepline .name, .channel .name { flex: 1; }
 .sweepline .n, .channel .n { font: 11px var(--mono); color: var(--muted); }
 
 .swatch { width: 6px; height: 6px; border-radius: 50%; flex: none; }
@@ -110,7 +110,7 @@ main { max-width: 760px; margin: 0 auto; padding: 32px 24px 56px; }
   border-bottom: 0.5px solid var(--hair);
 }
 
-.event span:nth-child(2) { flex: 1; }
+.event .name { flex: 1; }
 .event .when { font: 11px var(--mono); color: var(--faint); width: 76px; text-align: right; }
 
 section[aria-label="Recent claims"] { border-top: 0.5px solid var(--line); margin-top: 20px; padding-top: 16px; }

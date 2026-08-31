@@ -40,6 +40,16 @@ The delay slider sets the upper bound of the random wait before each click, from
 
 The master switch at the top pauses every group without uninstalling the extension.
 
+### Fullscreen
+
+Claiming works in fullscreen, and getting there took two fixes worth knowing about before you touch `isClickable` in `src/content.js`.
+
+The guard never measures an element. `HTMLElement.click()` dispatches to React's listener without hit-testing the page, so a zero-size button clicks fine, and a size test only rejects buttons that would have worked. `test/visibility-test.mjs` fails if one reappears.
+
+In fullscreen, Twitch also puts an ancestor of the chat column into `display:none` while leaving it mounted. A click still lands there, so the guard waives its rendered check under three conditions together: the group declares a `hiddenInFullscreen` container, `document.fullscreenElement` is set, and the element sits inside that container. Channel points is the only group that declares one.
+
+Keep all three. A general "click hidden buttons" rule would let a stray match on Twitch's shared button component redeem a reward instead of claiming a bonus, which is the one mistake that costs the user something.
+
 ## Sweep the drops inventory
 
 Claiming happens only on a page you have open, so a drop that finishes while the inventory page is closed waits for your next visit. The sweep makes that visit for you.
@@ -109,6 +119,8 @@ cd test && npm install jsdom
 node selector-test.mjs      # no group matches Redeem or the points balance
 node stats-render-test.mjs  # the history page renders against fake data
 node sweep-test.mjs         # the sweep opens one tab, closes it, and leaves other tabs alone
+node settings-sync-test.mjs # sync wins, local is the fallback, writes survive sync being off
+node popup-test.mjs         # every popup control round trips through storage
 ```
 
 ## Package for the Chrome Web Store

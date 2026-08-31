@@ -127,7 +127,7 @@ function render() {
   sweep.textContent = "";
   const swatch = el("span", "swatch");
   swatch.style.background = GROUPS.inventoryDrops.color;
-  sweep.append(swatch, el("span", null, "drops inventory"), el("span", "n", String(totals.inventoryDrops || 0)));
+  sweep.append(swatch, el("span", "name", "drops inventory"), el("span", "n", String(totals.inventoryDrops || 0)));
 
   const list = $("channels");
   list.textContent = "";
@@ -137,7 +137,7 @@ function render() {
   } else {
     for (const [name, count] of ranked) {
       const row = el("div", "channel");
-      row.append(el("span", null, name), el("span", "n", String(count)));
+      row.append(el("span", "name", name), el("span", "n", String(count)));
       list.append(row);
     }
   }
@@ -152,7 +152,7 @@ function render() {
       const row = el("div", "event");
       const dot = el("span", "swatch");
       dot.style.background = GROUPS[event.group]?.color || "var(--faint)";
-      row.append(dot, el("span", null, event.channel), el("span", "when", when(event.at)));
+      row.append(dot, el("span", "name", event.channel), el("span", "when", when(event.at)));
       recent.append(row);
     }
   }

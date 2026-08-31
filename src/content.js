@@ -42,12 +42,43 @@
     return min + Math.random() * (max - min);
   }
 
-  function isVisible(el) {
+  /** Is the element actually painted? Never asks how big it is. */
+  function isRendered(el) {
+    if (typeof el.checkVisibility === "function") {
+      return el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+    }
+
+    // display:none on an ancestor does not change the child's computed display,
+    // so the chain has to be walked rather than the element alone.
+    for (let node = el; node && node !== document.documentElement; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+    }
+    return true;
+  }
+
+  /**
+   * Size is deliberately not tested: HTMLElement.click() dispatches to React's
+   * root listener without hit-testing, so a zero-size button clicks fine.
+   *
+   * Hidden elements are refused, with one exception. In fullscreen Twitch keeps
+   * chat mounted under an ancestor with display:none, and a click there does
+   * still land, verified against a live chest. The waiver needs all three of:
+   * the group opting in, the document actually being fullscreen, and the
+   * element sitting inside that group's named container. Everywhere else a
+   * hidden button stays untouchable, which is what stops a stray match on
+   * Twitch's shared button component from spending points.
+   */
+  function isClickable(el, group) {
     if (!el || !el.isConnected) return false;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 2 || rect.height < 2) return false;
-    const style = getComputedStyle(el);
-    return style.visibility !== "hidden" && style.display !== "none" && style.pointerEvents !== "none";
+    if (getComputedStyle(el).pointerEvents === "none") return false;
+    if (isRendered(el)) return true;
+
+    return Boolean(
+      group?.hiddenInFullscreen &&
+      document.fullscreenElement &&
+      el.closest(group.hiddenInFullscreen)
+    );
   }
 
   const isDisabled = (el) => el.disabled === true || el.getAttribute("aria-disabled") === "true";
@@ -74,7 +105,7 @@
       }
       for (const node of matches) {
         const target = node.closest("button") || node;
-        if (isVisible(target) && !isDisabled(target)) found.add(target);
+        if (isClickable(target, group) && !isDisabled(target)) found.add(target);
       }
     }
 
@@ -88,7 +119,7 @@
       for (const scope of scopes) {
         for (const button of scope.querySelectorAll("button")) {
           if (!group.textPattern.test(accessibleName(button))) continue;
-          if (isVisible(button) && !isDisabled(button)) found.add(button);
+          if (isClickable(button, group) && !isDisabled(button)) found.add(button);
         }
       }
     }
@@ -170,7 +201,7 @@
 
           await sleep(randomDelay());
           if (!settings.enabled) return;
-          if (!isVisible(target) || isDisabled(target)) continue;
+          if (!isClickable(target, group) || isDisabled(target)) continue;
 
           target.click();
           clicked.set(target, Date.now());
@@ -270,6 +301,10 @@
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) queueScan("visible");
   });
+
+  // Entering or leaving fullscreen remounts a lot of the player, so scan on
+  // both rather than waiting for the next tick.
+  document.addEventListener("fullscreenchange", () => queueScan("fullscreenchange"));
 
   api.storage.onChanged.addListener((changes, area) => {
     if (changes.settings && (area === "sync" || area === "local")) {
