@@ -1,8 +1,8 @@
 # Privacy policy
 
-Last updated: August 30, 2026
+Last updated: August 31, 2026
 
-Twitch Auto Claim collects no personal data. It sends no data anywhere, because it makes no network requests at all.
+Twitch Auto Claim collects no personal data and makes no network requests of its own. Your claim history stays on your machine. Your settings are carried between your own computers by Chrome Sync.
 
 ## What the extension stores
 
