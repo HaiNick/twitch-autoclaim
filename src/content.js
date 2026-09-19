@@ -127,8 +127,12 @@
     return [...found];
   }
 
-  function record(name, { seen = false, claimed = false } = {}) {
-    const entry = stats[name] || { claims: 0, lastSeen: null, lastClaim: null };
+  function record(name, { applied = false, seen = false, claimed = false } = {}) {
+    const entry = stats[name] || { claims: 0, lastSeen: null, lastClaim: null, lastApplied: null };
+    // lastApplied is when the group last had a page it could match on at all.
+    // Without it, a group that simply was not visited looks identical to one
+    // whose selectors broke.
+    if (applied) entry.lastApplied = Date.now();
     if (seen) entry.lastSeen = Date.now();
     if (claimed) {
       entry.claims += 1;
@@ -192,6 +196,7 @@
       for (const [name, group] of Object.entries(GROUPS)) {
         if (!settings[group.toggle] || !applies(group)) continue;
 
+        record(name, { applied: true });
         const targets = collect(group);
         if (!targets.length) continue;
         record(name, { seen: true });

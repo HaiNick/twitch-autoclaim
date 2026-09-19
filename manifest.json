@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Twitch Auto Claim",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Claims channel point bonuses and drops on twitch.tv. Runs locally, no network access, no remote code.",
   "permissions": [
     "storage",

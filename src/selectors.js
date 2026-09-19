@@ -23,6 +23,11 @@ globalThis.TWITCH_AUTOCLAIM_SELECTORS = {
     // the visibility guard is waived for elements inside this container, and
     // only while the document is actually fullscreen.
     hiddenInFullscreen: '[data-test-selector="community-points-summary"], [class*="community-points" i]',
+    // A bonus chest appears every few minutes while a stream is open, so a day
+    // of watching with no match means the selectors broke. Drops have no such
+    // rhythm: an inventory can legitimately hold nothing for weeks, so those
+    // groups never raise the alert.
+    alertWhenStale: true,
     selectors: [
       '[data-test-selector="community-points-summary"] button[aria-label*="claim" i]',
       '[data-test-selector="community-points-summary"] button[aria-label*="bonus" i]',

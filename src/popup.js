@@ -1,11 +1,8 @@
 const api = globalThis.autoclaimApi;
 const SCAN_RESET_MS = 15000;
 
-const LABELS = {
-  channelPoints: "channel points",
-  streamDrops: "stream drops",
-  inventoryDrops: "inventory drops"
-};
+const GROUPS = globalThis.TWITCH_AUTOCLAIM_SELECTORS;
+const LABELS = Object.fromEntries(Object.entries(GROUPS).map(([key, group]) => [key, group.label]));
 
 const STALE_MS = 24 * 60 * 60 * 1000;
 const FRESH_MS = 60 * 60 * 1000;
@@ -75,16 +72,22 @@ function renderRows() {
   }
 }
 
-/** One line, only when a group that has worked before stops matching. */
+/**
+ * One line, only when a group that has worked before stops matching on pages
+ * where it could have matched. A group whose page was never opened, such as
+ * inventory drops when no sweep has run, is not stale: it never had a chance.
+ */
 function renderAlert() {
-  const broken = Object.entries(LABELS).find(([key]) => {
+  const broken = Object.keys(LABELS).find((key) => {
     const entry = stats[key] || {};
-    return settings[key] && entry.claims > 0 && entry.lastSeen && Date.now() - entry.lastSeen > STALE_MS;
+    if (!GROUPS[key].alertWhenStale || !settings[key] || !entry.claims) return false;
+    if (!entry.lastApplied || Date.now() - entry.lastApplied > STALE_MS) return false;
+    return !entry.lastSeen || Date.now() - entry.lastSeen > STALE_MS;
   });
 
   const alert = $("alert");
   alert.hidden = !broken;
-  if (broken) alert.textContent = `${LABELS[broken[0]]} stopped matching`;
+  if (broken) alert.textContent = `${LABELS[broken]} stopped matching`;
 }
 
 function renderSettings() {

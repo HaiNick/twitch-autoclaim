@@ -95,7 +95,9 @@ Daily buckets are never pruned, which is what makes the all-time view exact. A b
 
 ## Check selector health
 
-Each claim row carries its own claim count and the time its selectors last matched, so a group that has gone quiet is visible where you would toggle it. A green value means a match within the hour. If a group that has claimed before stops matching for a day, a line appears at the top of the popup naming it.
+Each claim row carries its own claim count and the time its selectors last matched, so a group that has gone quiet is visible where you would toggle it. A green value means a match within the hour.
+
+A line appears at the top of the popup when channel points has claimed before, has been on a page where it could have matched within the last day, and still has not matched. All three conditions are needed: a group whose page was never opened is not broken, it simply had no chance. Only channel points raises this, because a bonus chest appears every few minutes while a stream is open, whereas an inventory can legitimately hold nothing for weeks.
 
 **Scan** runs a dry pass over the current page and replaces those counts with live matches for 15 seconds. `n/a` means the group does not apply to this page, which is what inventory drops shows on a stream page. `0` means the group applies and found nothing, which is the signal that a selector broke if you can see a claim button on screen.
 

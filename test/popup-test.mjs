@@ -36,8 +36,9 @@ const dom = new JSDOM(html, {
 
 const errors = [];
 dom.window.addEventListener("error", (e) => errors.push(e.message));
-dom.window.eval(fs.readFileSync(path.join(root, "src/settings.js"), "utf8"));
-dom.window.eval(fs.readFileSync(path.join(root, "src/popup.js"), "utf8"));
+for (const file of ["src/settings.js", "src/selectors.js", "src/popup.js"]) {
+  dom.window.eval(fs.readFileSync(path.join(root, file), "utf8"));
+}
 await new Promise((r) => setTimeout(r, 50));
 
 const d = dom.window.document;

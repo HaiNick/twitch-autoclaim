@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.3
+
+- Fixes a false "stopped matching" warning. The check only looked at when a group last matched, so inventory drops looked broken after a few days when the real reason was that no sweep had run and the inventory page was never opened. Groups now record when they last had a page they could match on, and the warning needs both a recent opportunity and no match.
+- Only channel points can raise the warning. A bonus chest appears every few minutes while a stream is open, so silence there is meaningful. An inventory can hold nothing for weeks, so silence there is not.
+
 ## 2.1.2
 
 - Claims the bonus chest in fullscreen. Twitch keeps chat mounted there but puts an ancestor 21 levels up into `display:none`, and a click through that hidden subtree still reaches React, verified against a live chest. The guard now waives its rendered check, but only when the group opts in, the document is fullscreen, and the element sits inside that group's named container. Channel points is the only group that opts in.
